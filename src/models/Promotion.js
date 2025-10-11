@@ -5,7 +5,6 @@ const promotionSchema = new mongoose.Schema(
     code: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
     },
@@ -107,7 +106,7 @@ const promotionSchema = new mongoose.Schema(
 );
 
 // Indexes
-promotionSchema.index({ code: 1 });
+promotionSchema.index({ code: 1 }, { unique: true });
 promotionSchema.index({ status: 1 });
 promotionSchema.index({ validFrom: 1, validUntil: 1 });
 

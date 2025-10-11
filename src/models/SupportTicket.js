@@ -4,7 +4,6 @@ const supportTicketSchema = new mongoose.Schema(
   {
     ticketNumber: {
       type: String,
-      unique: true,
       required: true,
     },
     user: {
@@ -130,7 +129,7 @@ supportTicketSchema.pre('save', async function(next) {
 });
 
 // Indexes
-supportTicketSchema.index({ ticketNumber: 1 });
+supportTicketSchema.index({ ticketNumber: 1 }, { unique: true });
 supportTicketSchema.index({ user: 1 });
 supportTicketSchema.index({ status: 1 });
 supportTicketSchema.index({ priority: 1 });
