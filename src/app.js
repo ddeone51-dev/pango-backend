@@ -13,6 +13,9 @@ const routes = require('./routes');
 
 const app = express();
 
+// Trust proxy (needed for Render.com and other cloud platforms)
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet());
 
@@ -55,6 +58,8 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Trust proxy for cloud deployments
+  trustProxy: true,
 });
 app.use('/api', limiter);
 
