@@ -14,7 +14,7 @@ const routes = require('./routes');
 const app = express();
 
 // Trust proxy (needed for Render.com and other cloud platforms)
-app.set('trust proxy', true);
+// Note: We'll configure this in the rate limiter instead
 
 // Security middleware
 app.use(helmet());
