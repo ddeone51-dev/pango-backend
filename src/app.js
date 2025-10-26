@@ -27,7 +27,6 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
-app.use(/api/${process.env.API_VERSION || 'v1'}, routes);
 
 
 // Body parser
