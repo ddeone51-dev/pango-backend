@@ -118,40 +118,61 @@ app.all('*', (req, res) => {
   });
 });
 
-// Debug endpoint for admin login issues
-app.get('/debug-admin', async (req, res) => {
+// Create admin user endpoint
+app.post('/create-admin', async (req, res) => {
   try {
     const User = require('./models/User');
-    const admin = await User.findOne({ email: 'admin@pango.com' }).select('+password');
+    const bcrypt = require('bcryptjs');
     
-    if (!admin) {
-      return res.json({
-        success: false,
-        message: 'Admin user not found',
-        mongoUri: process.env.MONGODB_URI
+    const adminEmail = 'admin@pango.com';
+    const adminPassword = 'admin123';
+    
+    // Check if admin already exists
+    let admin = await User.findOne({ email: adminEmail });
+    
+    if (admin) {
+      // Update existing admin
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      admin.password = hashedPassword;
+      admin.role = 'admin';
+      admin.accountStatus = 'active';
+      await admin.save();
+      
+      res.json({
+        success: true,
+        message: 'Admin user updated successfully',
+        email: adminEmail,
+        password: adminPassword
+      });
+    } else {
+      // Create new admin
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      admin = new User({
+        email: adminEmail,
+        phoneNumber: '+255000000000',
+        password: hashedPassword,
+        role: 'admin',
+        accountStatus: 'active',
+        profile: {
+          firstName: 'Admin',
+          lastName: 'User'
+        }
+      });
+      
+      await admin.save();
+      
+      res.json({
+        success: true,
+        message: 'Admin user created successfully',
+        email: adminEmail,
+        password: adminPassword
       });
     }
-    
-    const testPassword = 'admin123';
-    const isMatch = await admin.matchPassword(testPassword);
-    
-    res.json({
-      success: true,
-      message: 'Admin user found',
-      admin: {
-        email: admin.email,
-        role: admin.role,
-        status: admin.accountStatus,
-        passwordMatch: isMatch
-      },
-      mongoUri: process.env.MONGODB_URI
-    });
     
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message,
-      mongoUri: process.env.MONGODB_URI
+      error: error.message
     });
   }
 });
