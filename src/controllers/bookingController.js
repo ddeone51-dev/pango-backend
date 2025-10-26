@@ -231,6 +231,37 @@ exports.confirmBooking = async (req, res, next) => {
   }
 };
 
+// @desc    Confirm booking payment (for payment systems)
+// @route   PUT /api/v1/bookings/:id/payment-confirm
+// @access  Public (called by payment webhooks)
+exports.paymentConfirmBooking = async (req, res, next) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return next(new AppError('Booking not found', 404));
+    }
+
+    if (booking.status !== 'pending') {
+      return next(new AppError('Booking cannot be confirmed', 400));
+    }
+
+    // Update booking status and payment info
+    booking.status = 'confirmed';
+    booking.payment.status = 'completed';
+    booking.payment.paidAt = new Date();
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      data: booking,
+      message: 'Booking payment confirmed successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Cancel booking
 // @route   PUT /api/v1/bookings/:id/cancel
 // @access  Private

@@ -4,6 +4,7 @@ const {
   getBookings,
   getBooking,
   confirmBooking,
+  paymentConfirmBooking,
   cancelBooking,
   getUpcomingBookings,
   getPastBookings,
@@ -26,6 +27,9 @@ router.route('/:id')
 
 router.put('/:id/confirm', confirmBooking);
 router.put('/:id/cancel', cancelBooking);
+
+// Payment confirmation endpoint (public - called by webhooks)
+router.put('/:id/payment-confirm', paymentConfirmBooking);
 
 module.exports = router;
 
