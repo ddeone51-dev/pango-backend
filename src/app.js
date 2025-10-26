@@ -27,7 +27,7 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
-// REMOVE stray line that caused regex error; routing configured below with apiBase
+app.use(/api/${process.env.API_VERSION || 'v1'}, routes);
 
 
 // Body parser
@@ -116,6 +116,44 @@ app.all('*', (req, res) => {
     success: false,
     message: `Cannot find ${req.originalUrl} on this server!`,
   });
+});
+
+// Debug endpoint for admin login issues
+app.get('/debug-admin', async (req, res) => {
+  try {
+    const User = require('./models/User');
+    const admin = await User.findOne({ email: 'admin@pango.com' }).select('+password');
+    
+    if (!admin) {
+      return res.json({
+        success: false,
+        message: 'Admin user not found',
+        mongoUri: process.env.MONGODB_URI
+      });
+    }
+    
+    const testPassword = 'admin123';
+    const isMatch = await admin.matchPassword(testPassword);
+    
+    res.json({
+      success: true,
+      message: 'Admin user found',
+      admin: {
+        email: admin.email,
+        role: admin.role,
+        status: admin.accountStatus,
+        passwordMatch: isMatch
+      },
+      mongoUri: process.env.MONGODB_URI
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      mongoUri: process.env.MONGODB_URI
+    });
+  }
 });
 
 // Global error handler
