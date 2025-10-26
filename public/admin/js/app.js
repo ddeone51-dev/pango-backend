@@ -2,7 +2,7 @@
 // Pango Admin Panel - JavaScript
 // ==================================
 
-const API_BASE_URL = 'http://localhost:3000/api/v1';
+const API_BASE_URL = 'https://pango-backend.onrender.com/api/v1';
 let authToken = localStorage.getItem('adminToken') || '';
 let currentUser = null;
 let charts = {};
