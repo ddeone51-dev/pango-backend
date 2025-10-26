@@ -13,6 +13,7 @@ const {
   updateBookingStatus,
   generateReports,
 } = require('../controllers/adminController');
+const { sendBroadcastNotification } = require('../controllers/pushNotificationController');
 const { protectAdmin } = require('../middleware/adminAuth');
 
 const router = express.Router();
@@ -42,7 +43,11 @@ router.put('/bookings/:id/status', updateBookingStatus);
 // Reports
 router.get('/reports', generateReports);
 
+// Push Notifications
+router.post('/notifications/broadcast', sendBroadcastNotification);
+
 module.exports = router;
+
 
 
 

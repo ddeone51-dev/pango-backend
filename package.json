@@ -1,7 +1,7 @@
 {
-  "name": "pango-backend",
+  "name": "homia-backend",
   "version": "1.0.0",
-  "description": "Backend API for Pango - Tanzanian accommodation booking platform",
+  "description": "Backend API for Homia - Tanzanian accommodation booking platform",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -12,13 +12,13 @@
     "lint:fix": "eslint src/**/*.js --fix"
   },
   "keywords": [
-    "pango",
+    "homia",
     "airbnb",
     "tanzania",
     "booking",
     "accommodation"
   ],
-  "author": "Pango Team",
+  "author": "Homia Team",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.12.2",

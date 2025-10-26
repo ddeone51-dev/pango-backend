@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 const routes = require('./routes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 
@@ -26,6 +27,8 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
+// REMOVE stray line that caused regex error; routing configured below with apiBase
+
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
@@ -71,7 +74,41 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-app.use(`/api/${process.env.API_VERSION || 'v1'}`, routes);
+const apiBase = `/api/${process.env.API_VERSION || 'v1'}`;
+app.use(apiBase, routes);
+
+// Explicitly mount payments to ensure webhook path is available in all deploys
+app.use(`${apiBase}/payments`, paymentRoutes);
+
+// Failsafe: inline payments endpoints in case router mounting is bypassed in prod
+// Health
+app.get(`${apiBase}/payments/health`, (req, res) => {
+  res.status(200).json({ success: true, message: 'payments router (inline) up' });
+});
+
+// ZenoPay webhook (inline)
+app.post(`${apiBase}/payments/zenopay-webhook`, async (req, res) => {
+  try {
+    const { order_id, payment_status, reference } = req.body || {};
+    if (!order_id) {
+      return res.status(400).json({ success: false, message: 'order_id is required' });
+    }
+    if (payment_status === 'COMPLETED') {
+      const Booking = require('./models/Booking');
+      const booking = await Booking.findOne({ orderId: order_id });
+      if (booking) {
+        booking.payment = booking.payment || {};
+        booking.payment.status = 'completed';
+        if (reference) booking.payment.transactionId = reference;
+        booking.payment.paidAt = new Date();
+        await booking.save();
+      }
+    }
+    res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Webhook processing failed' });
+  }
+});
 
 // 404 handler
 app.all('*', (req, res) => {

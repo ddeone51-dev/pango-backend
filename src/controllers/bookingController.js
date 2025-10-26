@@ -2,6 +2,7 @@ const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
+const pushNotificationService = require('../services/pushNotificationService');
 
 // @desc    Create a booking
 // @route   POST /api/v1/bookings
@@ -83,7 +84,7 @@ exports.createBooking = async (req, res, next) => {
     const booking = await Booking.create({
       listingId,
       guestId: req.user.id,
-      hostId: listing.hostId,
+      hostId: listing.hostId || req.user.id, // Use current user as hostId if listing.hostId is null
       checkInDate: checkIn,
       checkOutDate: checkOut,
       numberOfGuests,
@@ -104,6 +105,14 @@ exports.createBooking = async (req, res, next) => {
     });
 
     logger.info(`New booking created: ${booking._id}`);
+
+    // Populate listing for notifications
+    await booking.populate('listingId');
+
+    // Send push notification to host about new booking
+    pushNotificationService.sendNewBookingToHost(booking).catch(err => {
+      console.error('Failed to send booking notification to host:', err);
+    });
 
     res.status(201).json({
       success: true,
@@ -203,6 +212,14 @@ exports.confirmBooking = async (req, res, next) => {
     booking.status = 'confirmed';
     await booking.save();
 
+    // Populate for notifications
+    await booking.populate('listingId');
+
+    // Send confirmation notification to guest
+    pushNotificationService.sendBookingConfirmation(booking).catch(err => {
+      console.error('Failed to send booking confirmation:', err);
+    });
+
     res.status(200).json({
       success: true,
       data: booking,
@@ -243,6 +260,16 @@ exports.cancelBooking = async (req, res, next) => {
     };
 
     await booking.save();
+
+    // Populate for notifications
+    await booking.populate('listingId');
+
+    // Send cancellation notification to guest if cancelled by host
+    if (isHost) {
+      pushNotificationService.sendBookingCancellation(booking, 'host').catch(err => {
+        console.error('Failed to send cancellation notification:', err);
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -300,6 +327,15 @@ exports.getPastBookings = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+
+
+
+
+
+
 
 
 

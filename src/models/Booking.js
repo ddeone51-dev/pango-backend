@@ -79,10 +79,11 @@ const BookingSchema = new mongoose.Schema({
   payment: {
     method: {
       type: String,
-      enum: ['mpesa', 'card', 'bank_transfer'],
+      enum: ['zenopay'],
       required: true,
     },
     transactionId: String,
+    orderId: String, // ZenoPay order ID
     status: {
       type: String,
       enum: ['pending', 'completed', 'failed', 'refunded'],

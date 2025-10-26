@@ -23,13 +23,15 @@ router.use('/listings', listingRoutes);
 router.use('/bookings', bookingRoutes);
 router.use('/users', userRoutes);
 router.use('/upload', uploadRoutes);
+router.use('/payments', paymentRoutes);
 router.use('/admin', adminRoutes);
+router.use('/payments', require('./paymentRoutes'));
+
 
 // User report route (authenticated users can report content)
 router.use('/moderation', reportRoutes);
 
 // Admin-only routes
-router.use('/admin/payments', paymentRoutes);
 router.use('/admin/disputes', disputeRoutes);
 router.use('/admin/support', supportTicketRoutes);
 router.use('/admin/moderation', moderationRoutes);

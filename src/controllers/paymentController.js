@@ -1,347 +1,362 @@
-const Transaction = require('../models/Transaction');
+const Payment = require('../models/Payment');
 const Booking = require('../models/Booking');
+const Listing = require('../models/Listing');
 const User = require('../models/User');
-const AuditLog = require('../models/AuditLog');
-const { AppError } = require('../middleware/errorHandler');
+const pesapalService = require('../services/pesapalService');
+const logger = require('../utils/logger');
 
-// @desc    Get all transactions with filters
-// @route   GET /api/v1/admin/payments/transactions
-// @access  Private/Admin
-exports.getTransactions = async (req, res, next) => {
+/**
+ * Initiate Pesapal payment
+ */
+const initiatePayment = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 20,
-      status,
-      type,
-      paymentMethod,
-      startDate,
-      endDate,
-      search,
-    } = req.query;
+    const { 
+      listingId, 
+      bookingId, 
+      paymentMethod, 
+      customerPhone, 
+      customerEmail,
+      customerFirstName,
+      customerLastName,
+      customerAddress,
+      customerCity,
+      customerRegion
+    } = req.body;
 
-    const query = {};
+    const userId = req.user.id;
 
-    if (status) query.status = status;
-    if (type) query.type = type;
-    if (paymentMethod) query.paymentMethod = paymentMethod;
-    
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) query.createdAt.$lte = new Date(endDate);
+    // Validate required fields
+    if (!listingId || !bookingId || !paymentMethod || !customerPhone || !customerEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required payment information'
+      });
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // Get booking details
+    const booking = await Booking.findById(bookingId).populate('listingId');
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
 
-    const transactions = await Transaction.find(query)
-      .populate('user', 'email profile.firstName profile.lastName')
-      .populate('host', 'email profile.firstName profile.lastName')
-      .populate('listing', 'title location')
-      .populate('booking', 'checkIn checkOut')
+    // Verify booking belongs to user
+    if (booking.userId.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized access to booking'
+      });
+    }
+
+    // Calculate payment amount
+    const amount = booking.totalAmount;
+    
+    // Check if payment already exists
+    const existingPayment = await Payment.findOne({ 
+      bookingId,
+      status: { $in: ['PENDING', 'COMPLETED'] }
+    });
+
+    if (existingPayment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment already exists for this booking',
+        paymentId: existingPayment._id
+      });
+    }
+
+    // Create payment record
+    const payment = new Payment({
+      amount,
+      currency: 'TZS',
+      userId,
+      listingId,
+      bookingId,
+      paymentMethod,
+      customerPhone,
+      customerEmail,
+      customerFirstName: customerFirstName || 'Customer',
+      customerLastName: customerLastName || '',
+      status: 'PENDING'
+    });
+
+    await payment.save();
+
+    // Prepare payment data for Pesapal
+    const paymentData = {
+      amount: amount,
+      currency: 'TZS',
+      description: `Pango booking for ${booking.listingId.title}`,
+      customerPhone,
+      customerEmail,
+      customerFirstName: customerFirstName || 'Customer',
+      customerLastName: customerLastName || '',
+      customerAddress,
+      customerCity,
+      customerRegion
+    };
+
+    // Submit to Pesapal
+    const pesapalResponse = await pesapalService.submitOrder(paymentData);
+
+    // Update payment with Pesapal details
+    payment.pesapalOrderTrackingId = pesapalResponse.orderTrackingId;
+    payment.pesapalMerchantReference = pesapalResponse.merchantReference;
+    await payment.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment initiated successfully',
+      data: {
+        paymentId: payment._id,
+        orderTrackingId: pesapalResponse.orderTrackingId,
+        merchantReference: pesapalResponse.merchantReference,
+        redirectUrl: pesapalResponse.redirectUrl,
+        amount: payment.formattedAmount
+      }
+    });
+
+  } catch (error) {
+    logger.error('Payment initiation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to initiate payment',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Handle Pesapal callback
+ */
+const handleCallback = async (req, res) => {
+  try {
+    const { OrderTrackingId, OrderMerchantReference, OrderNotificationType } = req.query;
+
+    logger.info('Pesapal callback received:', {
+      OrderTrackingId,
+      OrderMerchantReference,
+      OrderNotificationType
+    });
+
+    // Validate callback
+    if (!pesapalService.validateCallback(OrderTrackingId, OrderMerchantReference)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid callback data'
+      });
+    }
+
+    // Find payment record
+    const payment = await Payment.findOne({ 
+      pesapalMerchantReference: OrderMerchantReference 
+    });
+
+    if (!payment) {
+      logger.error('Payment not found for merchant reference:', OrderMerchantReference);
+      return res.status(404).json({
+        success: false,
+        message: 'Payment not found'
+      });
+    }
+
+    // Get payment status from Pesapal
+    const statusResponse = await pesapalService.getPaymentStatus(OrderTrackingId);
+    
+    // Update payment status
+    payment.pesapalCallbackData = statusResponse;
+    payment.pesapalTransactionId = OrderTrackingId;
+
+    if (statusResponse.payment_status_description === 'COMPLETED') {
+      payment.status = 'COMPLETED';
+      payment.completedAt = new Date();
+      
+      // Update booking status
+      await Booking.findByIdAndUpdate(payment.bookingId, {
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID'
+      });
+
+      // Process successful payment
+      await pesapalService.processSuccessfulPayment(payment);
+    } else if (statusResponse.payment_status_description === 'FAILED') {
+      payment.status = 'FAILED';
+    }
+
+    await payment.save();
+
+    // Redirect to frontend with status
+    const redirectUrl = `${process.env.FRONTEND_URL}/payment/result?status=${payment.status}&paymentId=${payment._id}`;
+    res.redirect(redirectUrl);
+
+  } catch (error) {
+    logger.error('Payment callback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Callback processing failed'
+    });
+  }
+};
+
+/**
+ * Handle IPN (Instant Payment Notification)
+ * Changed to POST as per best practices
+ */
+const handleIPN = async (req, res) => {
+  try {
+    logger.info('=== PESAPAL IPN RECEIVED ===');
+    logger.info('Timestamp:', new Date().toISOString());
+    logger.info('Headers:', req.headers);
+    logger.info('Body:', req.body);
+    logger.info('Query:', req.query);
+    logger.info('===============================');
+
+    // Pesapal sends data in body for POST
+    const { OrderTrackingId, OrderMerchantReference, PaymentStatus, OrderNotificationType } = req.body;
+
+    if (!OrderTrackingId || !OrderMerchantReference) {
+      logger.error('Invalid IPN data - missing required fields');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid IPN data' 
+      });
+    }
+
+    // Find and update payment
+    const payment = await Payment.findOne({ 
+      pesapalMerchantReference: OrderMerchantReference 
+    });
+
+    if (payment) {
+      // Get updated status from Pesapal
+      const statusResponse = await pesapalService.getPaymentStatus(OrderTrackingId);
+      
+      payment.pesapalCallbackData = statusResponse;
+      payment.pesapalTransactionId = OrderTrackingId;
+      
+      if (statusResponse.payment_status_description === 'COMPLETED' && payment.status !== 'COMPLETED') {
+        payment.status = 'COMPLETED';
+        payment.completedAt = new Date();
+        
+        logger.info('✅ Payment completed:', OrderMerchantReference);
+        
+        // Update booking
+        await Booking.findByIdAndUpdate(payment.bookingId, {
+          status: 'CONFIRMED',
+          paymentStatus: 'PAID'
+        });
+      }
+      
+      await payment.save();
+      logger.info('Payment record updated successfully');
+    } else {
+      logger.warn('Payment not found for merchant reference:', OrderMerchantReference);
+    }
+
+    res.status(200).json({ success: true, message: 'IPN received' });
+
+  } catch (error) {
+    logger.error('❌ IPN processing error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'IPN processing failed'
+    });
+  }
+};
+
+/**
+ * Get payment status
+ */
+const getPaymentStatus = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const userId = req.user.id;
+
+    const payment = await Payment.findOne({ 
+      _id: paymentId, 
+      userId 
+    }).populate('listingId bookingId');
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment not found'
+      });
+    }
+
+    // If payment is still pending, check with Pesapal
+    if (payment.status === 'PENDING' && payment.pesapalOrderTrackingId) {
+      try {
+        const statusResponse = await pesapalService.getPaymentStatus(payment.pesapalOrderTrackingId);
+        
+        if (statusResponse.payment_status_description === 'COMPLETED' && payment.status !== 'COMPLETED') {
+          payment.status = 'COMPLETED';
+          payment.completedAt = new Date();
+          await payment.save();
+        }
+      } catch (error) {
+        logger.error('Status check error:', error);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: payment
+    });
+
+  } catch (error) {
+    logger.error('Get payment status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get payment status'
+    });
+  }
+};
+
+/**
+ * Get user's payment history
+ */
+const getPaymentHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 10 } = req.query;
+
+    const payments = await Payment.find({ userId })
+      .populate('listingId bookingId')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
 
-    const total = await Transaction.countDocuments(query);
-
-    // Calculate statistics
-    const stats = await Transaction.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: null,
-          totalAmount: { $sum: '$amount' },
-          totalPlatformFee: { $sum: '$platformFee' },
-          totalRefunded: { $sum: '$refundedAmount' },
-          avgTransaction: { $avg: '$amount' },
-        },
-      },
-    ]);
+    const total = await Payment.countDocuments({ userId });
 
     res.status(200).json({
       success: true,
       data: {
-        transactions,
-        stats: stats[0] || {},
+        payments,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
           total,
-          pages: Math.ceil(total / parseInt(limit)),
-        },
-      },
+          pages: Math.ceil(total / limit)
+        }
+      }
     });
+
   } catch (error) {
-    next(error);
+    logger.error('Get payment history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get payment history'
+    });
   }
 };
 
-// @desc    Get payment analytics
-// @route   GET /api/v1/admin/payments/analytics
-// @access  Private/Admin
-exports.getPaymentAnalytics = async (req, res, next) => {
-  try {
-    const { period = '30d' } = req.query;
-
-    let startDate = new Date();
-    if (period === '7d') {
-      startDate.setDate(startDate.getDate() - 7);
-    } else if (period === '30d') {
-      startDate.setDate(startDate.getDate() - 30);
-    } else if (period === '90d') {
-      startDate.setDate(startDate.getDate() - 90);
-    } else if (period === '1y') {
-      startDate.setFullYear(startDate.getFullYear() - 1);
-    }
-
-    // Revenue over time
-    const revenueByDay = await Transaction.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate },
-          status: 'completed',
-        },
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
-          },
-          revenue: { $sum: '$amount' },
-          platformFee: { $sum: '$platformFee' },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]);
-
-    // Payment method distribution
-    const paymentMethods = await Transaction.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate },
-          status: 'completed',
-        },
-      },
-      {
-        $group: {
-          _id: '$paymentMethod',
-          count: { $sum: 1 },
-          amount: { $sum: '$amount' },
-        },
-      },
-    ]);
-
-    // Transaction status distribution
-    const statusDistribution = await Transaction.aggregate([
-      {
-        $match: { createdAt: { $gte: startDate } },
-      },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          amount: { $sum: '$amount' },
-        },
-      },
-    ]);
-
-    // Top earning hosts
-    const topHosts = await Transaction.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate },
-          status: 'completed',
-        },
-      },
-      {
-        $group: {
-          _id: '$host',
-          earnings: { $sum: '$hostPayout' },
-          transactions: { $sum: 1 },
-        },
-      },
-      { $sort: { earnings: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'hostInfo',
-        },
-      },
-      { $unwind: '$hostInfo' },
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        revenueByDay,
-        paymentMethods,
-        statusDistribution,
-        topHosts,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
+module.exports = {
+  initiatePayment,
+  handleCallback,
+  handleIPN,
+  getPaymentStatus,
+  getPaymentHistory
 };
-
-// @desc    Process refund
-// @route   POST /api/v1/admin/payments/:id/refund
-// @access  Private/Admin
-exports.processRefund = async (req, res, next) => {
-  try {
-    const { amount, reason } = req.body;
-    const transaction = await Transaction.findById(req.params.id);
-
-    if (!transaction) {
-      return next(new AppError('Transaction not found', 404));
-    }
-
-    if (transaction.status !== 'completed') {
-      return next(new AppError('Can only refund completed transactions', 400));
-    }
-
-    if (amount > transaction.amount - transaction.refundedAmount) {
-      return next(new AppError('Refund amount exceeds available amount', 400));
-    }
-
-    // Create refund transaction
-    const refundTransaction = await Transaction.create({
-      booking: transaction.booking,
-      user: transaction.user,
-      host: transaction.host,
-      listing: transaction.listing,
-      amount: -amount,
-      platformFee: 0,
-      hostPayout: -amount,
-      type: 'refund',
-      status: 'completed',
-      paymentMethod: transaction.paymentMethod,
-      description: `Refund for transaction ${transaction.transactionId}`,
-      refundReason: reason,
-      processedAt: new Date(),
-    });
-
-    // Update original transaction
-    transaction.refundedAmount += amount;
-    if (transaction.refundedAmount >= transaction.amount) {
-      transaction.status = 'refunded';
-    }
-    await transaction.save();
-
-    // Log action
-    await AuditLog.create({
-      action: 'refund_issued',
-      performedBy: req.user.id,
-      targetModel: 'Transaction',
-      targetId: transaction._id,
-      description: `Refunded ${amount} TZS for transaction ${transaction.transactionId}`,
-      category: 'financial',
-      severity: 'high',
-      metadata: { reason, amount },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        refundTransaction,
-        originalTransaction: transaction,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Get pending payouts
-// @route   GET /api/v1/admin/payments/payouts
-// @access  Private/Admin
-exports.getPendingPayouts = async (req, res, next) => {
-  try {
-    const pendingPayouts = await Transaction.aggregate([
-      {
-        $match: {
-          status: 'completed',
-          type: 'booking',
-        },
-      },
-      {
-        $group: {
-          _id: '$host',
-          totalPayout: { $sum: '$hostPayout' },
-          transactions: { $sum: 1 },
-        },
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'hostInfo',
-        },
-      },
-      { $unwind: '$hostInfo' },
-      { $sort: { totalPayout: -1 } },
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: pendingPayouts,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Mark payout as completed
-// @route   POST /api/v1/admin/payments/payouts/:hostId/complete
-// @access  Private/Admin
-exports.completePayout = async (req, res, next) => {
-  try {
-    const { amount, paymentReference } = req.body;
-    const hostId = req.params.hostId;
-
-    // Create payout transaction
-    const payoutTransaction = await Transaction.create({
-      user: hostId,
-      host: hostId,
-      amount: -amount,
-      platformFee: 0,
-      hostPayout: -amount,
-      type: 'payout',
-      status: 'completed',
-      paymentMethod: 'bank_transfer',
-      providerReference: paymentReference,
-      description: `Payout to host`,
-      processedAt: new Date(),
-    });
-
-    // Log action
-    await AuditLog.create({
-      action: 'payout_completed',
-      performedBy: req.user.id,
-      targetModel: 'Transaction',
-      targetId: payoutTransaction._id,
-      description: `Processed payout of ${amount} TZS to host`,
-      category: 'financial',
-      severity: 'high',
-      metadata: { hostId, amount, paymentReference },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: payoutTransaction,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-
-
-
