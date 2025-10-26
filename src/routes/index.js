@@ -2,6 +2,7 @@ const express = require('express');
 const authRoutes = require('./authRoutes');
 const listingRoutes = require('./listingRoutes');
 const bookingRoutes = require('./bookingRoutes');
+const reviewRoutes = require('./reviewRoutes');
 const userRoutes = require('./userRoutes');
 const uploadRoutes = require('./uploadRoutes');
 const adminRoutes = require('./adminRoutes');
@@ -26,6 +27,7 @@ router.use('/upload', uploadRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/admin', adminRoutes);
 router.use('/payments', require('./paymentRoutes'));
+router.use('/reviews', reviewRoutes);
 
 
 // User report route (authenticated users can report content)

@@ -8,6 +8,7 @@ const {
   getFeaturedListings,
   getNearbyListings,
   getHostListings,
+  getBookedDates,
 } = require('../controllers/listingController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -20,6 +21,9 @@ router.route('/')
 router.get('/featured', getFeaturedListings);
 router.get('/nearby', getNearbyListings);
 router.get('/host/:hostId', getHostListings);
+
+// Booked date ranges for a listing (prevent overlapping bookings)
+router.get('/:id/booked-dates', getBookedDates);
 
 router.route('/:id')
   .get(getListing)

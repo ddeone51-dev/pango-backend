@@ -100,6 +100,8 @@ exports.createBooking = async (req, res, next) => {
       },
       payment: {
         method: paymentMethod,
+        orderId: req.body.orderId,
+        transactionId: req.body.transactionId,
       },
       guestDetails,
     });

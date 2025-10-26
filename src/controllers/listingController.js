@@ -303,6 +303,31 @@ exports.getHostListings = async (req, res, next) => {
   }
 };
 
+// Get booked dates for a listing
+exports.getBookedDates = async (req, res, next) => {
+  try {
+    const Booking = require('../models/Booking');
+    const listingId = req.params.id;
+
+    // Consider bookings that block availability
+    const blockingStatuses = ['confirmed', 'pending', 'in_progress'];
+    const bookings = await Booking.find({
+      listingId,
+      status: { $in: blockingStatuses },
+    }).select('checkInDate checkOutDate');
+
+    // Return as date ranges (ISO strings)
+    const ranges = bookings.map(b => ({
+      start: b.checkInDate.toISOString(),
+      end: b.checkOutDate.toISOString(),
+    }));
+
+    res.status(200).json({ success: true, data: ranges });
+  } catch (e) {
+    next(e);
+  }
+};
+
 
 
 

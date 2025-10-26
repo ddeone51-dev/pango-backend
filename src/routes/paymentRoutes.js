@@ -90,6 +90,8 @@ router.post('/zenopay-webhook', async (req, res) => {
       
       if (booking) {
         booking.payment.status = 'completed';
+        if (reference) booking.payment.transactionId = reference;
+        booking.status = 'confirmed';
         booking.payment.paidAt = new Date();
         await booking.save();
         
