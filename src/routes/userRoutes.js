@@ -47,6 +47,36 @@ router.put('/profile', async (req, res, next) => {
   }
 });
 
+// @desc    Update user role (admin only)
+// @route   PUT /api/v1/users/update-role
+// @access  Private
+router.put('/update-role', async (req, res, next) => {
+  try {
+    const { role } = req.body;
+    
+    if (!role) {
+      return next(new AppError('Role is required', 400));
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { role },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: user,
+      message: 'Role updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // IMPORTANT: Specific routes must come BEFORE generic /:id route
 
 // @desc    Get saved listings
