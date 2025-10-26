@@ -117,56 +117,35 @@ app.all('*', (req, res) => {
   });
 });
 
-// Create admin user endpoint - Force deployment
-app.post('/create-admin', async (req, res) => {
+// Fix admin role endpoint
+app.post('/fix-admin-role', async (req, res) => {
   try {
     const User = require('./models/User');
-    const bcrypt = require('bcryptjs');
     
     const adminEmail = 'admin@pango.com';
-    const adminPassword = 'admin123';
     
-    // Check if admin already exists
-    let admin = await User.findOne({ email: adminEmail });
-    
-    if (admin) {
-      // Update existing admin
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      admin.password = hashedPassword;
-      admin.role = 'admin';
-      admin.accountStatus = 'active';
-      await admin.save();
-      
-      res.json({
-        success: true,
-        message: 'Admin user updated successfully',
-        email: adminEmail,
-        password: adminPassword
-      });
-    } else {
-      // Create new admin
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      admin = new User({
-        email: adminEmail,
-        phoneNumber: '+255000000000',
-        password: hashedPassword,
+    // Find and update ALL users with this email
+    const updateResult = await User.updateMany(
+      { email: adminEmail },
+      { 
         role: 'admin',
-        accountStatus: 'active',
-        profile: {
-          firstName: 'Admin',
-          lastName: 'User'
-        }
-      });
-      
-      await admin.save();
-      
-      res.json({
-        success: true,
-        message: 'Admin user created successfully',
-        email: adminEmail,
-        password: adminPassword
-      });
-    }
+        accountStatus: 'active'
+      }
+    );
+    
+    // Get the updated user
+    const admin = await User.findOne({ email: adminEmail });
+    
+    res.json({
+      success: true,
+      message: `Updated ${updateResult.modifiedCount} admin users`,
+      admin: {
+        email: admin.email,
+        role: admin.role,
+        status: admin.accountStatus,
+        id: admin._id
+      }
+    });
     
   } catch (error) {
     res.status(500).json({
