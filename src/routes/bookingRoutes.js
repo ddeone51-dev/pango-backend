@@ -8,6 +8,7 @@ const {
   cancelBooking,
   getUpcomingBookings,
   getPastBookings,
+  downloadReceipt,
 } = require('../controllers/bookingController');
 const { protect } = require('../middleware/auth');
 
@@ -97,6 +98,8 @@ router.route('/')
 
 router.get('/upcoming', getUpcomingBookings);
 router.get('/past', getPastBookings);
+
+router.get('/:id/receipt', downloadReceipt);
 
 router.route('/:id')
   .get(getBooking);

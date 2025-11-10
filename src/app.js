@@ -17,8 +17,24 @@ const app = express();
 // Trust proxy (needed for Render.com and other cloud platforms)
 app.set('trust proxy', 1);
 
-// Security middleware
-app.use(helmet());
+// Security middleware with relaxed CSP for admin panel assets
+if (process.env.NODE_ENV === 'production') {
+  app.use(helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        'script-src': ["'self'", 'https://cdn.jsdelivr.net'],
+        'script-src-elem': ["'self'", 'https://cdn.jsdelivr.net'],
+        'script-src-attr': ["'unsafe-inline'"],
+        'style-src': ["'self'", 'https://cdnjs.cloudflare.com', "'unsafe-inline'"],
+        'font-src': ["'self'", 'https://cdnjs.cloudflare.com', 'https://fonts.gstatic.com', 'data:'],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }));
+} else {
+  app.use(helmet());
+}
 
 // CORS configuration
 const corsOptions = {

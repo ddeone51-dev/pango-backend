@@ -46,16 +46,16 @@ exports.getDashboardStats = async (req, res, next) => {
       {
         $match: {
           status: { $in: ['confirmed', 'completed'] },
-          paymentStatus: 'paid',
+          'payment.status': 'completed',
         },
       },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
+          totalRevenue: { $sum: '$pricing.total' },
           thisMonthRevenue: {
             $sum: {
-              $cond: [{ $gte: ['$createdAt', thisMonth] }, '$totalAmount', 0],
+              $cond: [{ $gte: ['$createdAt', thisMonth] }, '$pricing.total', 0],
             },
           },
           lastMonthRevenue: {
@@ -67,14 +67,14 @@ exports.getDashboardStats = async (req, res, next) => {
                     { $lt: ['$createdAt', thisMonth] },
                   ],
                 },
-                '$totalAmount',
+                '$pricing.total',
                 0,
               ],
             },
           },
           thisYearRevenue: {
             $sum: {
-              $cond: [{ $gte: ['$createdAt', thisYear] }, '$totalAmount', 0],
+              $cond: [{ $gte: ['$createdAt', thisYear] }, '$pricing.total', 0],
             },
           },
         },
@@ -137,11 +137,20 @@ exports.getDashboardStats = async (req, res, next) => {
       .limit(5)
       .select('email profile.firstName profile.lastName role createdAt');
 
-    const recentBookings = await Booking.find()
+    const recentBookingsDocs = await Booking.find()
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate('userId', 'email profile.firstName profile.lastName')
+      .populate('guestId', 'email profile.firstName profile.lastName')
       .populate('listingId', 'title location.city');
+    const recentBookings = recentBookingsDocs.map((booking) => {
+      const plain = booking.toObject();
+      return {
+        ...plain,
+        userId: plain.guestId,
+        totalAmount: plain.pricing?.total || 0,
+        paymentStatus: plain.payment?.status || 'pending',
+      };
+    });
 
     // Booking status breakdown
     const bookingsByStatus = await Booking.aggregate([
@@ -245,13 +254,13 @@ exports.getChartData = async (req, res, next) => {
       {
         $match: {
           createdAt: { $gte: startDate },
-          paymentStatus: 'paid',
+          'payment.status': 'completed',
         },
       },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          revenue: { $sum: '$totalAmount' },
+          revenue: { $sum: '$pricing.total' },
         },
       },
       { $sort: { _id: 1 } },
@@ -336,8 +345,9 @@ exports.getUser = async (req, res, next) => {
     }
 
     // Get user's bookings
-    const bookings = await Booking.find({ userId: user._id })
+    const bookings = await Booking.find({ guestId: user._id })
       .populate('listingId', 'title location.city')
+      .populate('guestId', 'email profile.firstName profile.lastName')
       .sort('-createdAt')
       .limit(10);
 
@@ -346,7 +356,15 @@ exports.getUser = async (req, res, next) => {
       data: {
         user,
         listings,
-        bookings,
+        bookings: bookings.map((booking) => {
+          const plain = booking.toObject();
+          return {
+            ...plain,
+            userId: plain.guestId,
+            totalAmount: plain.pricing?.total || 0,
+            paymentStatus: plain.payment?.status || 'pending',
+          };
+        }),
       },
     });
   } catch (error) {
@@ -403,7 +421,7 @@ exports.deleteUser = async (req, res, next) => {
     }
 
     // Delete user's bookings
-    await Booking.deleteMany({ userId: user._id });
+    await Booking.deleteMany({ guestId: user._id });
 
     await user.deleteOne();
 
@@ -544,16 +562,31 @@ exports.getAllBookings = async (req, res, next) => {
     }
 
     if (paymentStatus) {
-      query.paymentStatus = paymentStatus;
+      query['payment.status'] = paymentStatus.toLowerCase();
     }
 
     const total = await Booking.countDocuments(query);
-    const bookings = await Booking.find(query)
-      .populate('userId', 'email profile.firstName profile.lastName')
-      .populate('listingId', 'title location.city pricePerNight')
+    const bookingsDocs = await Booking.find(query)
+      .populate('guestId', 'email profile.firstName profile.lastName phoneNumber')
+      .populate('hostId', 'email profile.firstName profile.lastName phoneNumber')
+      .populate('listingId', 'title location.city')
       .sort(sort)
       .limit(limit * 1)
       .skip((page - 1) * limit);
+
+    const bookings = bookingsDocs.map((booking) => {
+      const plain = booking.toObject();
+      return {
+        ...plain,
+        userId: plain.guestId,
+        totalAmount: plain.pricing?.total || 0,
+        currency: plain.pricing?.currency || 'TZS',
+        paymentStatus: plain.payment?.status || 'pending',
+        paymentMethod: plain.payment?.method || 'unknown',
+        checkIn: plain.checkInDate,
+        checkOut: plain.checkOutDate,
+      };
+    });
 
     res.status(200).json({
       success: true,

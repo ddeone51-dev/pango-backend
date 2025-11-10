@@ -1,6 +1,6 @@
-# 🎛️ Pango Admin Panel
+# 🎛️ Homie Admin Panel
 
-**A comprehensive, modern admin dashboard for managing the Pango property rental platform.**
+**A comprehensive, modern admin dashboard for managing the Homie property rental platform.**
 
 ---
 

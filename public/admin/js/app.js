@@ -1,8 +1,8 @@
 // ==================================
-// Pango Admin Panel - JavaScript
+// Homie Admin Panel - JavaScript
 // ==================================
 
-const API_BASE_URL = 'https://pango-backend.onrender.com/api/v1';
+const API_BASE_URL = `${window.location.origin}/api/v1`;
 let authToken = localStorage.getItem('adminToken') || '';
 let currentUser = null;
 let charts = {};
@@ -902,7 +902,7 @@ function displayBookings(bookings) {
             <td>${new Date(booking.checkOut).toLocaleDateString('en-GB')}</td>
             <td>${formatCurrency(booking.totalAmount)}</td>
             <td><span class="badge ${getStatusBadge(booking.status)}">${booking.status}</span></td>
-            <td><span class="badge ${getPaymentBadge(booking.paymentStatus)}">${booking.paymentStatus}</span></td>
+            <td><span class="badge ${getPaymentBadge(booking.paymentStatus)}">${booking.paymentStatus?.toUpperCase() || 'PENDING'}</span></td>
             <td>
                 <div class="action-buttons">
                     <button class="btn-icon" onclick="updateBookingStatus('${booking._id}', 'confirmed')" title="Confirm">
@@ -919,11 +919,14 @@ function displayBookings(bookings) {
 
 function getPaymentBadge(status) {
     const badges = {
+        'completed': 'badge-success',
         'paid': 'badge-success',
         'pending': 'badge-warning',
-        'refunded': 'badge-info'
+        'refunded': 'badge-info',
+        'failed': 'badge-danger',
+        'cancelled': 'badge-secondary'
     };
-    return badges[status] || 'badge-info';
+    return badges[status?.toLowerCase?.()] || 'badge-info';
 }
 
 async function updateBookingStatus(bookingId, newStatus) {

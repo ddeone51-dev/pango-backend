@@ -28,3 +28,4 @@ async function clearAllBookings() {
 
 // Run the cleaner
 clearAllBookings();
+

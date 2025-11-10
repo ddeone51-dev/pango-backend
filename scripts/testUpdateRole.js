@@ -1,8 +1,8 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-async function fixAdminRoleViaAPI() {
+async function testUpdateRole() {
   try {
-    console.log('🔧 Fixing admin role via API...');
+    console.log('🔧 Testing update-role endpoint...');
     
     const baseUrl = 'https://pango-backend.onrender.com/api/v1';
     
@@ -31,40 +31,28 @@ async function fixAdminRoleViaAPI() {
     console.log('Current role:', loginResult.data.user.role);
     
     const token = loginResult.data.token;
-    const userId = loginResult.data.user._id;
 
-    // Try to update role through different endpoints
-    const endpoints = [
-      `${baseUrl}/users/profile`,
-      `${baseUrl}/users/${userId}`,
-      `${baseUrl}/users/me`,
-      `${baseUrl}/users/update-role`
-    ];
+    // Try to update role
+    console.log('\n🔄 Updating role to admin...');
+    const updateResponse = await fetch(`${baseUrl}/users/update-role`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        role: 'admin'
+      })
+    });
 
-    for (const endpoint of endpoints) {
-      console.log(`\n🔄 Trying endpoint: ${endpoint}`);
-      
-      try {
-        const updateResponse = await fetch(endpoint, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            role: 'admin'
-          })
-        });
+    const updateResult = await updateResponse.json();
+    console.log('Update response:', updateResult);
 
-        const updateResult = await updateResponse.json();
-        console.log(`Response from ${endpoint}:`, updateResult);
-
-        if (updateResponse.ok) {
-          console.log(`✅ Success with ${endpoint}!`);
-        }
-      } catch (error) {
-        console.log(`❌ Error with ${endpoint}:`, error.message);
-      }
+    if (updateResponse.ok) {
+      console.log('✅ Role updated successfully!');
+      console.log('New role:', updateResult.data.role);
+    } else {
+      console.log('❌ Role update failed:', updateResult.message);
     }
 
     // Test final login
@@ -88,7 +76,7 @@ async function fixAdminRoleViaAPI() {
       console.log('Final user role:', finalLoginResult.data.user.role);
       
       if (finalLoginResult.data.user.role === 'admin') {
-        console.log('✅ Admin role is now correct!');
+        console.log('✅ Admin role is now correct! You can login to the admin panel!');
       } else {
         console.log('❌ Role is still not admin');
       }
@@ -99,5 +87,5 @@ async function fixAdminRoleViaAPI() {
   }
 }
 
-fixAdminRoleViaAPI();
+testUpdateRole();
 

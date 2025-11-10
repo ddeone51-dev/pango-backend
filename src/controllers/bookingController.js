@@ -1,8 +1,15 @@
+const PDFDocument = require('pdfkit');
 const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const pushNotificationService = require('../services/pushNotificationService');
+
+const formatCurrency = (amount, currency = 'TZS') => new Intl.NumberFormat('en-TZ', {
+  style: 'currency',
+  currency,
+  minimumFractionDigits: 0,
+}).format(amount || 0);
 
 // @desc    Create a booking
 // @route   POST /api/v1/bookings
@@ -257,6 +264,99 @@ exports.paymentConfirmBooking = async (req, res, next) => {
       data: booking,
       message: 'Booking payment confirmed successfully'
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Download booking receipt as PDF
+// @route   GET /api/v1/bookings/:id/receipt
+// @access  Private
+exports.downloadReceipt = async (req, res, next) => {
+  try {
+    const booking = await Booking.findById(req.params.id)
+      .populate('listingId', 'title location.address location.city')
+      .populate('guestId', 'email phoneNumber profile.firstName profile.lastName')
+      .populate('hostId', 'email phoneNumber profile.firstName profile.lastName');
+
+    if (!booking) {
+      return next(new AppError('Booking not found', 404));
+    }
+
+    const userId = req.user.id;
+    const isGuest = booking.guestId?._id?.toString() === userId;
+    const isHost = booking.hostId?._id?.toString() === userId;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isGuest && !isHost && !isAdmin) {
+      return next(new AppError('Not authorized to download this receipt', 403));
+    }
+
+    if ((booking.payment?.status || 'pending') !== 'completed') {
+      return next(new AppError('Receipt is available after payment is completed', 400));
+    }
+
+    const doc = new PDFDocument({ margin: 50 });
+    const fileName = `booking-${booking._id}-receipt.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+    doc.pipe(res);
+
+    doc
+      .fontSize(20)
+      .text('Homia Booking Receipt', { align: 'center' })
+      .moveDown(1.5);
+
+    doc
+      .fontSize(12)
+      .text(`Receipt #: ${booking._id}`)
+      .text(`Issued: ${new Date().toLocaleDateString('en-GB')}`)
+      .text(`Booking Reference: ${booking.payment?.orderId || booking._id}`)
+      .moveDown();
+
+    doc.fontSize(14).text('Guest Details', { underline: true });
+    doc
+      .fontSize(12)
+      .text(`${booking.guestId?.profile?.firstName || ''} ${booking.guestId?.profile?.lastName || ''}`.trim())
+      .text(booking.guestId?.email || 'N/A')
+      .text(booking.guestId?.phoneNumber || 'N/A')
+      .moveDown();
+
+    doc.fontSize(14).text('Listing Details', { underline: true });
+    doc
+      .fontSize(12)
+      .text(booking.listingId?.title || 'Listing')
+      .text(booking.listingId?.location?.address || booking.listingId?.location?.city || 'Location not available')
+      .moveDown();
+
+    doc.fontSize(14).text('Booking Summary', { underline: true });
+    doc
+      .fontSize(12)
+      .text(`Check-in: ${new Date(booking.checkInDate).toLocaleDateString('en-GB')}`)
+      .text(`Check-out: ${new Date(booking.checkOutDate).toLocaleDateString('en-GB')}`)
+      .text(`Nights: ${booking.pricing?.numberOfNights || 0}`)
+      .text(`Guests: ${booking.numberOfGuests || 0}`)
+      .moveDown();
+
+    doc.fontSize(14).text('Payment Details', { underline: true });
+    doc
+      .fontSize(12)
+      .text(`Status: ${(booking.payment?.status || 'completed').toUpperCase()}`)
+      .text(`Method: ${(booking.payment?.method || 'N/A').toString().toUpperCase()}`)
+      .text(`Transaction ID: ${booking.payment?.transactionId || 'N/A'}`)
+      .text(`Amount Paid: ${formatCurrency(booking.pricing?.total, booking.pricing?.currency)}`)
+      .moveDown(2);
+
+    doc
+      .fontSize(12)
+      .text('Thank you for choosing Homia!', { align: 'center' })
+      .moveDown()
+      .fontSize(10)
+      .text('For support, contact support@homia.com', { align: 'center' });
+
+    doc.end();
   } catch (error) {
     next(error);
   }
