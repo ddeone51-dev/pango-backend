@@ -1045,94 +1045,121 @@ exports.exportPaymentTransactionsPdf = async (req, res, next) => {
 
     const tableTop = doc.y + 10;
     const tableWidth = doc.page.width - doc.options.margin * 2;
-    const columnWidths = {
-      REF: tableWidth * 0.13,
-      CUSTOMER: tableWidth * 0.25,
-      AMOUNT: tableWidth * 0.12,
-      METHOD: tableWidth * 0.12,
-      STATUS: tableWidth * 0.1,
-      CREATED: tableWidth * 0.14,
-      BOOKING: tableWidth * 0.14,
-    };
-    const columns = ['REF', 'CUSTOMER', 'AMOUNT', 'METHOD', 'STATUS', 'CREATED', 'BOOKING'];
+    const columns = [
+      {
+        header: 'REF',
+        width: tableWidth * 0.16,
+        align: 'left',
+        getter: (tx) => {
+          const bookingId = tx.booking?._id || tx.booking || '';
+          const ref = tx.merchantReference || tx.transactionId || bookingId || tx.id;
+          return ref ? ref.toString().substring(0, 18) : '';
+        },
+      },
+      {
+        header: 'CUSTOMER',
+        width: tableWidth * 0.28,
+        align: 'left',
+        getter: (tx) => [
+          tx.customerName,
+          tx.customerEmail,
+          tx.customerPhone,
+        ].filter(Boolean).join('\n') || 'N/A',
+      },
+      {
+        header: 'AMOUNT',
+        width: tableWidth * 0.13,
+        align: 'right',
+        getter: (tx) => `TZS ${Number(tx.amount || 0).toLocaleString()}`,
+      },
+      {
+        header: 'METHOD',
+        width: tableWidth * 0.12,
+        align: 'left',
+        getter: (tx) => (tx.paymentMethod || 'N/A').replace(/_/g, ' '),
+      },
+      {
+        header: 'STATUS',
+        width: tableWidth * 0.11,
+        align: 'left',
+        getter: (tx) => tx.status || 'UNKNOWN',
+      },
+      {
+        header: 'CREATED',
+        width: tableWidth * 0.2,
+        align: 'left',
+        getter: (tx) => (tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ''),
+      },
+    ];
 
-    const drawRow = (row, y, isHeader = false) => {
-      const x = doc.x;
-      doc.font(isHeader ? 'Helvetica-Bold' : 'Helvetica');
-      doc.fontSize(isHeader ? 10 : 9);
-      doc.fillColor('#000000');
-      let currentX = x;
+    const paddingX = 6;
+    const paddingY = 4;
 
-      row.forEach((cell, idx) => {
-        const key = columns[idx];
-        const maxWidth = columnWidths[key] - 4;
-        const text = cell ?? '';
-        const widthMeasure = doc.widthOfString(text, { width: maxWidth });
-        const textX = currentX + (columnWidths[key] - widthMeasure) / 2;
-        doc.text(text, textX, y, {
-          width: maxWidth,
-          height: 16,
-          align: 'center',
-          ellipsis: true,
+    const drawHeader = (y) => {
+      let currentX = doc.x;
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000');
+      columns.forEach((col) => {
+        doc.save();
+        doc.rect(currentX, y, col.width, 20).fill('#f2f2f2').restore();
+        doc.text(col.header, currentX + paddingX, y + paddingY, {
+          width: col.width - paddingX * 2,
+          align: col.align,
         });
-        currentX += columnWidths[key];
+        currentX += col.width;
       });
-    };
-
-    drawRow(columns, tableTop, true);
-
-    const drawDivider = (y, color = '#e0e0e0') => {
-      doc.moveTo(doc.x, y)
-        .lineTo(doc.x + tableWidth, y)
-        .strokeColor(color)
+      doc.moveTo(doc.x, y + 20)
+        .lineTo(doc.x + tableWidth, y + 20)
+        .strokeColor('#d0d0d0')
         .stroke();
+      return y + 22;
     };
 
-    drawDivider(tableTop + 16, '#bfbfbf');
+    const drawRow = (tx, y, index) => {
+      let currentX = doc.x;
+      doc.font('Helvetica').fontSize(9).fillColor('#000000');
 
-    let rowY = tableTop + 22;
+      const cellHeights = columns.map((col) => {
+        const text = col.getter(tx) ?? '';
+        return doc.heightOfString(text, {
+          width: col.width - paddingX * 2,
+          align: col.align,
+        });
+      });
+      const rowHeight = Math.max(...cellHeights) + paddingY * 2;
 
-    const ensureSpace = () => {
-      if (rowY > doc.page.height - doc.page.margins.bottom - 40) {
+      const backgroundColor = index % 2 === 0 ? '#fafafa' : '#f5f5f5';
+      doc.save();
+      doc.rect(doc.x, y, tableWidth, rowHeight).fill(backgroundColor).restore();
+
+      columns.forEach((col, colIndex) => {
+        const text = col.getter(tx) ?? '';
+        doc.text(text, currentX + paddingX, y + paddingY, {
+          width: col.width - paddingX * 2,
+          align: col.align,
+        });
+        currentX += col.width;
+      });
+
+      doc.moveTo(doc.x, y + rowHeight)
+        .lineTo(doc.x + tableWidth, y + rowHeight)
+        .strokeColor('#e0e0e0')
+        .stroke();
+
+      return y + rowHeight + 2;
+    };
+
+    let rowY = drawHeader(tableTop);
+
+    const ensureSpace = (heightNeeded = 40) => {
+      if (rowY + heightNeeded > doc.page.height - doc.page.margins.bottom) {
         doc.addPage();
-        rowY = doc.y;
-        drawRow(columns, rowY, true);
-        drawDivider(rowY + 16, '#bfbfbf');
-        rowY += 22;
+        rowY = drawHeader(doc.y);
       }
     };
 
     transactions.forEach((tx, index) => {
       ensureSpace();
-      const bookingId = tx.booking?._id || tx.booking || '';
-      const ref = tx.merchantReference || tx.transactionId || bookingId || tx.id;
-      const customer = [
-        tx.customerName,
-        tx.customerEmail,
-        tx.customerPhone,
-      ].filter(Boolean).join('\n');
-      const amount = `TZS ${Number(tx.amount || 0).toLocaleString()}`;
-      const created = tx.createdAt ? new Date(tx.createdAt).toLocaleString() : '';
-      const bookingLabel = bookingId
-        ? `#${bookingId.toString().substring(0, 10).toUpperCase()}`
-        : '';
-
-      drawRow(
-        [
-          ref ? ref.toString().substring(0, 16) : '',
-          customer || 'N/A',
-          amount,
-          (tx.paymentMethod || 'N/A').replace(/_/g, ' '),
-          tx.status || 'UNKNOWN',
-          created,
-          bookingLabel,
-        ],
-        rowY,
-      );
-
-      const dividerColor = index % 2 === 0 ? '#f0f0f0' : '#e6e6e6';
-      drawDivider(rowY + 18, dividerColor);
-      rowY += 24;
+      rowY = drawRow(tx, rowY, index);
     });
 
     doc.end();
