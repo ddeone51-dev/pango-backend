@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
 const { AppError } = require('../middleware/errorHandler');
@@ -357,6 +358,208 @@ exports.downloadReceipt = async (req, res, next) => {
       .text('For support, contact support@homia.com', { align: 'center' });
 
     doc.end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getHostCalendar = async (req, res, next) => {
+  try {
+    const hostId = req.user.id;
+    const listings = await Listing.find({
+      hostId,
+      status: { $in: ['active', 'inactive'] },
+    }).select('_id title location blockedDates availability');
+
+    const blockingStatuses = ['pending', 'confirmed', 'in_progress'];
+    const bookings = await Booking.find({
+      hostId,
+      status: { $in: blockingStatuses },
+    })
+      .select('listingId checkInDate checkOutDate status guestDetails')
+      .populate('guestId', 'profile.firstName profile.lastName phoneNumber email');
+
+    const bookingsByListing = bookings.reduce((acc, booking) => {
+      const listingId = booking.listingId?._id?.toString() || booking.listingId?.toString();
+      if (!listingId) return acc;
+      if (!acc[listingId]) acc[listingId] = [];
+      const guestName = booking.guestDetails?.fullName
+        || `${booking.guestId?.profile?.firstName || ''} ${booking.guestId?.profile?.lastName || ''}`.trim();
+      acc[listingId].push({
+        id: booking._id,
+        start: booking.checkInDate,
+        end: booking.checkOutDate,
+        status: booking.status,
+        guestName: guestName || 'Guest',
+        guestEmail: booking.guestDetails?.email || booking.guestId?.email || null,
+        guestPhone: booking.guestDetails?.phoneNumber || booking.guestId?.phoneNumber || null,
+      });
+      return acc;
+    }, {});
+
+    const data = listings.map((listing) => {
+      const listingId = listing._id.toString();
+      const title = listing.title?.en || listing.title?.sw || listing.title || 'Listing';
+      const blockedDates = (listing.blockedDates || []).map((block) => ({
+        id: block._id,
+        start: block.start,
+        end: block.end,
+        reason: block.reason,
+        createdAt: block.createdAt,
+      }));
+      return {
+        listingId,
+        title,
+        location: listing.location?.city || '',
+        instantBooking: listing.availability?.instantBooking || false,
+        blockedDates,
+        bookings: bookingsByListing[listingId] || [],
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getHostAnalytics = async (req, res, next) => {
+  try {
+    const hostId = req.user.id;
+    const rangeDays = parseInt(req.query.range, 10) || 30;
+    const now = new Date();
+    const rangeStart = new Date(now);
+    rangeStart.setDate(rangeStart.getDate() - Math.max(rangeDays - 1, 0));
+
+    const listings = await Listing.find({ hostId }).select('_id title');
+    const listingsCount = listings.length;
+
+    const bookings = await Booking.find({ hostId })
+      .populate('listingId', 'title')
+      .select('checkInDate checkOutDate status pricing createdAt');
+
+    const totalBookings = bookings.length;
+    const upcomingBookings = bookings.filter((booking) => {
+      const checkIn = new Date(booking.checkInDate);
+      return checkIn >= now && ['pending', 'confirmed', 'in_progress'].includes(booking.status);
+    }).length;
+    const completedBookings = bookings.filter((booking) => booking.status === 'completed').length;
+    const cancelledBookings = bookings.filter((booking) => String(booking.status).startsWith('cancelled')).length;
+
+    const completedOrConfirmed = bookings.filter((booking) => ['completed', 'confirmed'].includes(booking.status));
+    const totalRevenue = completedOrConfirmed.reduce((sum, booking) => (
+      sum + (booking.pricing?.total || 0)
+    ), 0);
+
+    const rangeBookings = bookings.filter((booking) => (
+      new Date(booking.checkInDate) >= rangeStart
+    ));
+
+    const revenueRange = rangeBookings
+      .filter((booking) => ['completed', 'confirmed'].includes(booking.status))
+      .reduce((sum, booking) => sum + (booking.pricing?.total || 0), 0);
+
+    const calcNights = (start, end) => {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      const diff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+      return Number.isNaN(diff) || diff < 0 ? 0 : diff;
+    };
+
+    const totalNightsBooked = completedOrConfirmed.reduce((sum, booking) => (
+      sum + calcNights(booking.checkInDate, booking.checkOutDate)
+    ), 0);
+
+    const rangeNightsBooked = rangeBookings
+      .filter((booking) => ['completed', 'confirmed', 'in_progress'].includes(booking.status))
+      .reduce((sum, booking) => sum + calcNights(booking.checkInDate, booking.checkOutDate), 0);
+
+    const occupancyRate = listingsCount > 0 && rangeDays > 0
+      ? Math.min(100, (rangeNightsBooked / (listingsCount * rangeDays)) * 100)
+      : 0;
+
+    const averageStay = completedBookings > 0
+      ? totalNightsBooked / completedBookings
+      : 0;
+
+    const topListingsMap = {};
+    bookings.forEach((booking) => {
+      const listingId = booking.listingId?._id?.toString() || booking.listingId?.toString();
+      if (!listingId) return;
+      const title = booking.listingId?.title?.en
+        || booking.listingId?.title?.sw
+        || booking.listingId?.title
+        || 'Listing';
+
+      if (!topListingsMap[listingId]) {
+        topListingsMap[listingId] = {
+          listingId,
+          title,
+          bookings: 0,
+          revenue: 0,
+        };
+      }
+
+      topListingsMap[listingId].bookings += 1;
+      if (['completed', 'confirmed'].includes(booking.status)) {
+        topListingsMap[listingId].revenue += booking.pricing?.total || 0;
+      }
+    });
+
+    const topListings = Object.values(topListingsMap)
+      .sort((a, b) => b.bookings - a.bookings)
+      .slice(0, 5);
+
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const trendAggregation = await Booking.aggregate([
+      {
+        $match: {
+          hostId: mongoose.Types.ObjectId(hostId),
+          createdAt: { $gte: sixMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+          },
+          bookings: { $sum: 1 },
+          revenue: { $sum: { $ifNull: ['$pricing.total', 0] } },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    const monthlyTrend = trendAggregation.map((item) => ({
+      label: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+      bookings: item.bookings,
+      revenue: item.revenue,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totals: {
+          totalBookings,
+          upcomingBookings,
+          completedBookings,
+          cancelledBookings,
+        },
+        revenue: {
+          total: totalRevenue,
+          range: revenueRange,
+        },
+        occupancyRate,
+        averageStay,
+        rangeDays,
+        topListings,
+        monthlyTrend,
+      },
+    });
   } catch (error) {
     next(error);
   }

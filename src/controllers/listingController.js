@@ -343,6 +343,121 @@ exports.getBookedDates = async (req, res, next) => {
   }
 };
 
+exports.blockListingDates = async (req, res, next) => {
+  try {
+    const { startDate, endDate, reason } = req.body;
+    if (!startDate || !endDate) {
+      return next(new AppError('Start and end dates are required', 400));
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return next(new AppError('Invalid date format', 400));
+    }
+
+    if (end <= start) {
+      return next(new AppError('End date must be after start date', 400));
+    }
+
+    const listing = await Listing.findOne({
+      _id: req.params.id,
+      hostId: req.user.id,
+    });
+
+    if (!listing) {
+      return next(new AppError('Listing not found', 404));
+    }
+
+    const Booking = require('../models/Booking');
+    const blockingStatuses = ['pending', 'confirmed', 'in_progress'];
+    const overlappingBooking = await Booking.findOne({
+      listingId: listing._id,
+      status: { $in: blockingStatuses },
+      $or: [
+        {
+          checkInDate: { $lt: end },
+          checkOutDate: { $gt: start },
+        },
+      ],
+    });
+
+    if (overlappingBooking) {
+      return next(new AppError('Cannot block dates that overlap existing bookings', 400));
+    }
+
+    const overlapsBlocked = (listing.blockedDates || []).some((block) => (
+      start < block.end && end > block.start
+    ));
+
+    if (overlapsBlocked) {
+      return next(new AppError('Dates overlap with an existing blocked range', 400));
+    }
+
+    listing.blockedDates.push({
+      start,
+      end,
+      reason,
+      createdBy: req.user.id,
+    });
+
+    await listing.save();
+
+    res.status(200).json({
+      success: true,
+      data: listing.blockedDates.map((block) => ({
+        id: block._id,
+        start: block.start,
+        end: block.end,
+        reason: block.reason,
+        createdAt: block.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.unblockListingDate = async (req, res, next) => {
+  try {
+    const { id, blockId } = req.params;
+
+    const listing = await Listing.findOne({
+      _id: id,
+      hostId: req.user.id,
+    });
+
+    if (!listing) {
+      return next(new AppError('Listing not found', 404));
+    }
+
+    const index = (listing.blockedDates || []).findIndex(
+      (block) => block._id.toString() === blockId,
+    );
+
+    if (index === -1) {
+      return next(new AppError('Blocked date not found', 404));
+    }
+
+    listing.blockedDates.splice(index, 1);
+    await listing.save();
+
+    res.status(200).json({
+      success: true,
+      data: listing.blockedDates.map((block) => ({
+        id: block._id,
+        start: block.start,
+        end: block.end,
+        reason: block.reason,
+        createdAt: block.createdAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 

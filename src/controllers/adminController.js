@@ -1043,17 +1043,22 @@ exports.exportPaymentTransactionsPdf = async (req, res, next) => {
     doc.text(`Failed/Cancelled: ${stats.failedCount} (TZS ${stats.failedAmount.toLocaleString()})`);
     doc.moveDown();
 
-    const tableTop = doc.y + 10;
+    const tableTop = doc.y + 12;
     const tableWidth = doc.page.width - doc.options.margin * 2;
+    const tableLeft = doc.x;
+    const paddingX = 6;
+    const paddingY = 6;
+    const headerHeight = 26;
+
     const columns = [
       {
         header: 'REF',
-        width: tableWidth * 0.16,
+        width: tableWidth * 0.18,
         align: 'left',
         getter: (tx) => {
           const bookingId = tx.booking?._id || tx.booking || '';
           const ref = tx.merchantReference || tx.transactionId || bookingId || tx.id;
-          return ref ? ref.toString().substring(0, 18) : '';
+          return ref ? ref.toString().substring(0, 24) : '';
         },
       },
       {
@@ -1068,7 +1073,7 @@ exports.exportPaymentTransactionsPdf = async (req, res, next) => {
       },
       {
         header: 'AMOUNT',
-        width: tableWidth * 0.13,
+        width: tableWidth * 0.12,
         align: 'right',
         getter: (tx) => `TZS ${Number(tx.amount || 0).toLocaleString()}`,
       },
@@ -1080,7 +1085,7 @@ exports.exportPaymentTransactionsPdf = async (req, res, next) => {
       },
       {
         header: 'STATUS',
-        width: tableWidth * 0.11,
+        width: tableWidth * 0.1,
         align: 'left',
         getter: (tx) => tx.status || 'UNKNOWN',
       },
@@ -1092,65 +1097,62 @@ exports.exportPaymentTransactionsPdf = async (req, res, next) => {
       },
     ];
 
-    const paddingX = 6;
-    const paddingY = 4;
-
     const drawHeader = (y) => {
-      let currentX = doc.x;
+      let currentX = tableLeft;
       doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000');
       columns.forEach((col) => {
         doc.save();
-        doc.rect(currentX, y, col.width, 20).fill('#f2f2f2').restore();
+        doc.rect(currentX, y, col.width, headerHeight).fill('#f2f2f2').restore();
         doc.text(col.header, currentX + paddingX, y + paddingY, {
           width: col.width - paddingX * 2,
-          align: col.align,
+          align: 'left',
         });
         currentX += col.width;
       });
-      doc.moveTo(doc.x, y + 20)
-        .lineTo(doc.x + tableWidth, y + 20)
-        .strokeColor('#d0d0d0')
+      doc.moveTo(tableLeft, y + headerHeight)
+        .lineTo(tableLeft + tableWidth, y + headerHeight)
+        .strokeColor('#d6d6d6')
         .stroke();
-      return y + 22;
+      return y + headerHeight + 2;
     };
 
-    const drawRow = (tx, y, index) => {
-      let currentX = doc.x;
+    const drawRow = (tx, startY, index) => {
+      let currentX = tableLeft;
       doc.font('Helvetica').fontSize(9).fillColor('#000000');
 
       const cellHeights = columns.map((col) => {
         const text = col.getter(tx) ?? '';
         return doc.heightOfString(text, {
           width: col.width - paddingX * 2,
-          align: col.align,
         });
       });
+
       const rowHeight = Math.max(...cellHeights) + paddingY * 2;
+      const bgColor = index % 2 === 0 ? '#fbfbfb' : '#f5f5f5';
 
-      const backgroundColor = index % 2 === 0 ? '#fafafa' : '#f5f5f5';
       doc.save();
-      doc.rect(doc.x, y, tableWidth, rowHeight).fill(backgroundColor).restore();
+      doc.rect(tableLeft, startY, tableWidth, rowHeight).fill(bgColor).restore();
 
-      columns.forEach((col, colIndex) => {
+      columns.forEach((col) => {
         const text = col.getter(tx) ?? '';
-        doc.text(text, currentX + paddingX, y + paddingY, {
+        doc.text(text, currentX + paddingX, startY + paddingY, {
           width: col.width - paddingX * 2,
           align: col.align,
         });
         currentX += col.width;
       });
 
-      doc.moveTo(doc.x, y + rowHeight)
-        .lineTo(doc.x + tableWidth, y + rowHeight)
-        .strokeColor('#e0e0e0')
+      doc.moveTo(tableLeft, startY + rowHeight)
+        .lineTo(tableLeft + tableWidth, startY + rowHeight)
+        .strokeColor('#e4e4e4')
         .stroke();
 
-      return y + rowHeight + 2;
+      return startY + rowHeight + 2;
     };
 
     let rowY = drawHeader(tableTop);
 
-    const ensureSpace = (heightNeeded = 40) => {
+    const ensureSpace = (heightNeeded = 60) => {
       if (rowY + heightNeeded > doc.page.height - doc.page.margins.bottom) {
         doc.addPage();
         rowY = drawHeader(doc.y);
