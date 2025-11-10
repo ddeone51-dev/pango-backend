@@ -14,6 +14,7 @@ const {
   generateReports,
   getPaymentTransactions,
   exportPaymentTransactions,
+  exportPaymentTransactionsPdf,
   getHostRequests,
   updateHostStatus,
 } = require('../controllers/adminController');
@@ -51,6 +52,7 @@ router.put('/bookings/:id/status', updateBookingStatus);
 // Payments routes
 router.get('/payments/transactions', getPaymentTransactions);
 router.get('/payments/export', exportPaymentTransactions);
+router.get('/payments/export-pdf', exportPaymentTransactionsPdf);
 
 // Reports
 router.get('/reports', generateReports);

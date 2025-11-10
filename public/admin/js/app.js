@@ -577,6 +577,15 @@ function displayHosts(hosts) {
     }
 
     tbody.innerHTML = hosts.map((host) => {
+        const hostId = (() => {
+            if (!host?._id) return '';
+            if (typeof host._id === 'string') return host._id;
+            if (typeof host._id === 'object') {
+                if (typeof host._id.toString === 'function') return host._id.toString();
+                if (host._id.$oid) return host._id.$oid;
+            }
+            return String(host._id);
+        })();
         const name = `${host.profile?.firstName || ''} ${host.profile?.lastName || ''}`.trim() || 'N/A';
         const status = host.hostStatus || 'not_requested';
         const statusBadge = getHostStatusBadge(status);
@@ -586,7 +595,7 @@ function displayHosts(hosts) {
 
         if (status !== 'approved') {
             actionButtons.push(`
-                <button class="btn btn-primary" onclick="updateHostStatus('${host._id}', 'approved')">
+                <button class="btn btn-primary" onclick="updateHostStatus('${hostId}', 'approved')">
                     <i class="fas fa-check"></i> Approve
                 </button>
             `);
@@ -594,7 +603,7 @@ function displayHosts(hosts) {
 
         if (status !== 'rejected') {
             actionButtons.push(`
-                <button class="btn btn-danger" onclick="updateHostStatus('${host._id}', 'rejected')">
+                <button class="btn btn-danger" onclick="updateHostStatus('${hostId}', 'rejected')">
                     <i class="fas fa-times"></i> Reject
                 </button>
             `);
@@ -602,7 +611,7 @@ function displayHosts(hosts) {
 
         if (status !== 'pending') {
             actionButtons.push(`
-                <button class="btn btn-secondary" onclick="updateHostStatus('${host._id}', 'pending')">
+                <button class="btn btn-secondary" onclick="updateHostStatus('${hostId}', 'pending')">
                     <i class="fas fa-hourglass-half"></i> Mark Pending
                 </button>
             `);
@@ -1080,6 +1089,7 @@ document.getElementById('paymentSearch')?.addEventListener('keypress', (e) => {
     }
 });
 document.getElementById('exportPaymentsBtn')?.addEventListener('click', exportPayments);
+document.getElementById('exportPaymentsPdfBtn')?.addEventListener('click', exportPaymentsPdf);
 
 async function exportPayments() {
     try {
@@ -1122,6 +1132,50 @@ async function exportPayments() {
         hideLoading();
         console.error(error);
         showToast(error.message || 'Failed to export payments', 'error');
+    }
+}
+
+async function exportPaymentsPdf() {
+    try {
+        showLoading();
+
+        const status = document.getElementById('paymentStatusFilter')?.value || '';
+        const method = document.getElementById('paymentMethodFilter')?.value || '';
+        const search = document.getElementById('paymentSearch')?.value.trim() || '';
+
+        const queryParams = new URLSearchParams({
+            ...(status && { status }),
+            ...(method && { method }),
+            ...(search && { search }),
+        });
+
+        const response = await fetch(`${API_BASE_URL}/admin/payments/export-pdf?${queryParams}`, {
+            headers: {
+                ...(authToken && { Authorization: `Bearer ${authToken}` }),
+            },
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || 'Failed to export payments PDF');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `payments-${Date.now()}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        hideLoading();
+        showToast('PDF exported successfully', 'success');
+    } catch (error) {
+        hideLoading();
+        console.error(error);
+        showToast(error.message || 'Failed to export payments PDF', 'error');
     }
 }
 

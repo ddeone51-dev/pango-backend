@@ -1,3 +1,4 @@
+const PDFDocument = require('pdfkit');
 const User = require('../models/User');
 const Listing = require('../models/Listing');
 const Booking = require('../models/Booking');
@@ -995,6 +996,131 @@ exports.exportPaymentTransactions = async (req, res, next) => {
       `attachment; filename="payments-export-${new Date().toISOString().split('T')[0]}.csv"`
     );
     res.status(200).send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Export payment transactions as PDF
+// @route   GET /api/v1/admin/payments/export-pdf
+// @access  Admin
+exports.exportPaymentTransactionsPdf = async (req, res, next) => {
+  try {
+    const { status, method, search } = req.query;
+    const statusUpper = status ? status.toUpperCase() : '';
+    const methodUpper = method ? method.toUpperCase() : '';
+    const searchRegex = search ? new RegExp(search, 'i') : null;
+
+    const { transactions, stats } = await buildPaymentDataset({
+      statusUpper,
+      methodUpper,
+      searchRegex,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="payments-report-${new Date().toISOString().split('T')[0]}.pdf"`,
+    );
+
+    const doc = new PDFDocument({ margin: 36, size: 'A4' });
+    doc.pipe(res);
+
+    doc.fontSize(20).text('Homie Payments Report', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(10).fillColor('#666666')
+      .text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    doc.moveDown(1.5);
+    doc.fillColor('#000000');
+
+    doc.fontSize(12).text('Summary', { underline: true });
+    doc.moveDown(0.4);
+    doc.fontSize(10);
+    doc.text(`Total Transactions: ${stats.totalCount}`);
+    doc.text(`Total Volume: TZS ${stats.totalAmount.toLocaleString()}`);
+    doc.text(`Completed: ${stats.completedCount} (TZS ${stats.completedAmount.toLocaleString()})`);
+    doc.text(`Pending: ${stats.pendingCount} (TZS ${stats.pendingAmount.toLocaleString()})`);
+    doc.text(`Failed/Cancelled: ${stats.failedCount} (TZS ${stats.failedAmount.toLocaleString()})`);
+    doc.moveDown();
+
+    const tableTop = doc.y + 10;
+    const columnWidths = [70, 120, 70, 70, 70, 110];
+    const columns = ['REF', 'CUSTOMER', 'AMOUNT', 'METHOD', 'STATUS', 'CREATED'];
+
+    const drawRow = (row, y, isHeader = false) => {
+      const x = doc.x;
+      const font = isHeader ? { size: 10, color: '#000000', bold: true } : { size: 9, color: '#000000', bold: false };
+
+      doc.fontSize(font.size).fillColor(font.color);
+      let currentX = x;
+
+      row.forEach((cell, idx) => {
+        const text = cell ?? '';
+        doc.font(font.bold ? 'Helvetica-Bold' : 'Helvetica');
+        doc.text(text, currentX, y, {
+          width: columnWidths[idx],
+          height: 14,
+          ellipsis: true,
+        });
+        currentX += columnWidths[idx];
+      });
+    };
+
+    drawRow(columns, tableTop, true);
+
+    doc.moveTo(doc.x, tableTop + 14)
+      .lineTo(doc.x + columnWidths.reduce((sum, width) => sum + width, 0), tableTop + 14)
+      .strokeColor('#cccccc')
+      .stroke();
+
+    let rowY = tableTop + 20;
+
+    const ensureSpace = () => {
+      if (rowY > doc.page.height - doc.page.margins.bottom - 40) {
+        doc.addPage();
+        rowY = doc.y;
+        drawRow(columns, rowY, true);
+        doc.moveTo(doc.x, rowY + 14)
+          .lineTo(doc.x + columnWidths.reduce((sum, width) => sum + width, 0), rowY + 14)
+          .strokeColor('#cccccc')
+          .stroke();
+        rowY += 20;
+      }
+    };
+
+    transactions.forEach((tx) => {
+      ensureSpace();
+      const bookingId = tx.booking?._id || tx.booking || '';
+      const ref = tx.merchantReference || tx.transactionId || bookingId || tx.id;
+      const customer = [
+        tx.customerName,
+        tx.customerEmail,
+        tx.customerPhone,
+      ].filter(Boolean).join('\n');
+      const amount = `TZS ${Number(tx.amount || 0).toLocaleString()}`;
+      const created = tx.createdAt ? new Date(tx.createdAt).toLocaleString() : '';
+
+      drawRow(
+        [
+          ref ? ref.toString().substring(0, 18) : '',
+          customer || 'N/A',
+          amount,
+          (tx.paymentMethod || 'N/A').replace(/_/g, ' '),
+          tx.status || 'UNKNOWN',
+          created,
+        ],
+        rowY,
+      );
+
+      doc.moveTo(doc.x, rowY + 16)
+        .lineTo(doc.x + columnWidths.reduce((sum, width) => sum + width, 0), rowY + 16)
+        .strokeColor('#f0f0f0')
+        .stroke();
+
+      rowY += 20;
+    });
+
+    doc.end();
   } catch (error) {
     next(error);
   }
