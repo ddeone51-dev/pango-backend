@@ -870,6 +870,10 @@ function updatePaymentsStats(stats = {}) {
         completedAmount = 0,
         pendingAmount = 0,
         failedAmount = 0,
+        totalCount = 0,
+        completedCount = 0,
+        pendingCount = 0,
+        failedCount = 0,
     } = stats;
 
     const setText = (id, value) => {
@@ -879,10 +883,22 @@ function updatePaymentsStats(stats = {}) {
         }
     };
 
+    const setCount = (id, count) => {
+        const el = document.getElementById(id);
+        if (el) {
+            const safeCount = count || 0;
+            el.textContent = `${safeCount} transaction${safeCount === 1 ? '' : 's'}`;
+        }
+    };
+
     setText('paymentsTotalAmount', totalAmount);
     setText('paymentsCompletedAmount', completedAmount);
     setText('paymentsPendingAmount', pendingAmount);
     setText('paymentsFailedAmount', failedAmount);
+    setCount('paymentsTotalCount', totalCount);
+    setCount('paymentsCompletedCount', completedCount);
+    setCount('paymentsPendingCount', pendingCount);
+    setCount('paymentsFailedCount', failedCount);
 }
 
 document.getElementById('paymentStatusFilter')?.addEventListener('change', () => loadPayments(1));

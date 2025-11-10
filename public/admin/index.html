@@ -443,6 +443,7 @@
                               </select>
                             <select id="paymentMethodFilter" class="filter-select">
                                 <option value="">All Methods</option>
+                                <option value="ZENOPAY">ZenoPay</option>
                                 <option value="M-PESA">M-Pesa</option>
                                 <option value="TIGO_PESA">Tigo Pesa</option>
                                 <option value="AIRTEL_MONEY">Airtel Money</option>
@@ -461,6 +462,7 @@
                             <div class="stat-details">
                                 <span class="stat-value" id="paymentsTotalAmount">TZS 0</span>
                                 <span class="stat-label">Total Volume</span>
+                                <span class="stat-change" id="paymentsTotalCount">0 transactions</span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -470,6 +472,7 @@
                             <div class="stat-details">
                                 <span class="stat-value" id="paymentsCompletedAmount">TZS 0</span>
                                 <span class="stat-label">Completed</span>
+                                <span class="stat-change" id="paymentsCompletedCount">0 transactions</span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -479,6 +482,7 @@
                             <div class="stat-details">
                                 <span class="stat-value" id="paymentsPendingAmount">TZS 0</span>
                                 <span class="stat-label">Pending</span>
+                                <span class="stat-change" id="paymentsPendingCount">0 transactions</span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -488,6 +492,7 @@
                             <div class="stat-details">
                                 <span class="stat-value" id="paymentsFailedAmount">TZS 0</span>
                                 <span class="stat-label">Failed</span>
+                                <span class="stat-change" id="paymentsFailedCount">0 transactions</span>
                             </div>
                         </div>
                     </div>

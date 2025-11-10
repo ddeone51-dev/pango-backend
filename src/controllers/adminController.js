@@ -613,43 +613,56 @@ exports.getPaymentTransactions = async (req, res, next) => {
       status,
       method,
       search,
-      sort = '-createdAt',
     } = req.query;
 
-    const query = {};
+    const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const statusUpper = status ? status.toUpperCase() : '';
+    const methodUpper = method ? method.toUpperCase() : '';
+    const searchRegex = search ? new RegExp(search, 'i') : null;
 
-    if (status) {
-      query.status = status.toUpperCase();
-    }
-
-    if (method) {
-      query.paymentMethod = method;
-    }
-
-    if (search) {
-      const regex = new RegExp(search, 'i');
-      query.$or = [
-        { customerEmail: regex },
-        { customerPhone: regex },
-        { pesapalMerchantReference: regex },
-        { pesapalOrderTrackingId: regex },
-        { paymentMethod: regex },
+    const paymentQuery = {};
+    if (statusUpper) paymentQuery.status = statusUpper;
+    if (methodUpper && methodUpper !== 'ZENOPAY') paymentQuery.paymentMethod = methodUpper;
+    if (searchRegex) {
+      paymentQuery.$or = [
+        { customerEmail: searchRegex },
+        { customerPhone: searchRegex },
+        { pesapalMerchantReference: searchRegex },
+        { pesapalOrderTrackingId: searchRegex },
+        { paymentMethod: searchRegex },
       ];
     }
 
-    const total = await Payment.countDocuments(query);
-    const transactionsDocs = await Payment.find(query)
-      .populate('userId', 'email phoneNumber profile.firstName profile.lastName')
-      .populate('listingId', 'title location.city')
-      .populate('bookingId', 'status checkInDate checkOutDate')
-      .sort(sort)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const bookingQuery = { 'payment.method': 'zenopay' };
+    if (statusUpper) bookingQuery['payment.status'] = statusUpper.toLowerCase();
+    if (methodUpper && methodUpper !== 'ZENOPAY') bookingQuery['payment.method'] = methodUpper.toLowerCase();
+    if (searchRegex) {
+      bookingQuery.$or = [
+        { 'guestDetails.email': searchRegex },
+        { 'guestDetails.phoneNumber': searchRegex },
+        { orderId: searchRegex },
+        { 'payment.transactionId': searchRegex },
+      ];
+    }
 
-    const transactions = transactionsDocs.map((payment) => {
+    const [paymentDocs, bookingDocs] = await Promise.all([
+      Payment.find(paymentQuery)
+        .populate('userId', 'email phoneNumber profile.firstName profile.lastName')
+        .populate('listingId', 'title location.city')
+        .populate('bookingId', 'status checkInDate checkOutDate')
+        .sort('-createdAt'),
+      Booking.find(bookingQuery)
+        .populate('guestId', 'email phoneNumber profile.firstName profile.lastName')
+        .populate('listingId', 'title location.city')
+        .select('pricing payment guestId listingId createdAt updatedAt orderId guestDetails'),
+    ]);
+
+    const paymentTransactions = paymentDocs.map((payment) => {
       const plain = payment.toObject();
       return {
-        id: plain._id,
+        id: plain._id.toString(),
+        source: 'payment',
         amount: plain.amount,
         currency: plain.currency,
         status: plain.status,
@@ -667,73 +680,94 @@ exports.getPaymentTransactions = async (req, res, next) => {
       };
     });
 
-    const aggregationMatch = Object.keys(query).length ? [{ $match: query }] : [];
+    const bookingTransactions = bookingDocs
+      .filter((booking) => booking.pricing?.total)
+      .map((booking) => {
+        const plain = booking.toObject({ virtuals: true });
+        const statusValue = plain.payment?.status
+          ? plain.payment.status.toUpperCase()
+          : 'PENDING';
+        const methodValue = plain.payment?.method
+          ? plain.payment.method.toUpperCase()
+          : 'ZENOPAY';
+        const guest = plain.guestId || {};
+        const guestDetails = plain.guestDetails || {};
+        return {
+          id: `BOOKING-${plain._id}`,
+          source: 'booking',
+          amount: plain.pricing?.total || 0,
+          currency: plain.pricing?.currency || 'TZS',
+          status: statusValue,
+          paymentMethod: methodValue,
+          customerEmail: guestDetails.email || guest.email || null,
+          customerPhone: guestDetails.phoneNumber || guest.phoneNumber || null,
+          createdAt: plain.createdAt,
+          completedAt: plain.payment?.paidAt || null,
+          merchantReference: plain.orderId,
+          orderTrackingId: plain.payment?.orderId || plain.orderId,
+          transactionId: plain.payment?.transactionId || null,
+          user: plain.guestId,
+          listing: plain.listingId,
+          booking: { _id: plain._id },
+        };
+      })
+      .filter((tx) => {
+        if (!methodUpper) return true;
+        return tx.paymentMethod === methodUpper;
+      });
 
-    const [statsAggregation, statusBreakdown] = await Promise.all([
-      Payment.aggregate([
-        ...aggregationMatch,
-        {
-          $group: {
-            _id: null,
-            totalAmount: { $sum: '$amount' },
-            totalCount: { $sum: 1 },
-            completedAmount: {
-              $sum: {
-                $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$amount', 0],
-              },
-            },
-            pendingAmount: {
-              $sum: {
-                $cond: [{ $eq: ['$status', 'PENDING'] }, '$amount', 0],
-              },
-            },
-            failedAmount: {
-              $sum: {
-                $cond: [{ $eq: ['$status', 'FAILED'] }, '$amount', 0],
-              },
-            },
-          },
-        },
-      ]),
-      Payment.aggregate([
-        ...aggregationMatch,
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 },
-            amount: { $sum: '$amount' },
-          },
-        },
-      ]),
-    ]);
+    const combinedTransactions = [...paymentTransactions, ...bookingTransactions]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const statsDoc = statsAggregation[0] || {};
-    const stats = {
-      totalAmount: statsDoc.totalAmount || 0,
-      totalCount: statsDoc.totalCount || 0,
-      completedAmount: statsDoc.completedAmount || 0,
-      pendingAmount: statsDoc.pendingAmount || 0,
-      failedAmount: statsDoc.failedAmount || 0,
-      breakdown: statusBreakdown.reduce((acc, item) => ({
-        ...acc,
-        [item._id || 'UNKNOWN']: {
-          count: item.count,
-          amount: item.amount,
-        },
-      }), {}),
-    };
+    const total = combinedTransactions.length;
+    const pages = Math.ceil(total / limitNum) || 1;
+    const startIndex = (pageNum - 1) * limitNum;
+    const paginatedTransactions = combinedTransactions.slice(startIndex, startIndex + limitNum);
+
+    const statsAccumulator = combinedTransactions.reduce((acc, tx) => {
+      const amount = tx.amount || 0;
+      const statusKey = tx.status || 'UNKNOWN';
+      acc.totalAmount += amount;
+      acc.totalCount += 1;
+      if (statusKey === 'COMPLETED') {
+        acc.completedAmount += amount;
+        acc.completedCount += 1;
+      }
+      if (statusKey === 'PENDING') {
+        acc.pendingAmount += amount;
+        acc.pendingCount += 1;
+      }
+      if (statusKey === 'FAILED' || statusKey === 'CANCELLED') {
+        acc.failedAmount += amount;
+        acc.failedCount += 1;
+      }
+      acc.breakdown[statusKey] = acc.breakdown[statusKey] || { count: 0, amount: 0 };
+      acc.breakdown[statusKey].count += 1;
+      acc.breakdown[statusKey].amount += amount;
+      return acc;
+    }, {
+      totalAmount: 0,
+      totalCount: 0,
+      completedAmount: 0,
+      pendingAmount: 0,
+      failedAmount: 0,
+      completedCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      breakdown: {},
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        transactions,
+        transactions: paginatedTransactions,
         pagination: {
-          page: parseInt(page, 10),
-          limit: parseInt(limit, 10),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.ceil(total / limit),
+          pages,
         },
-        stats,
+        stats: statsAccumulator,
       },
     });
   } catch (error) {
