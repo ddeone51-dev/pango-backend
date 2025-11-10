@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Listing = require('../models/Listing');
 const Booking = require('../models/Booking');
+const Payment = require('../models/Payment');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
@@ -595,6 +596,145 @@ exports.getAllBookings = async (req, res, next) => {
       pages: Math.ceil(total / limit),
       currentPage: parseInt(page),
       data: bookings,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get payment transactions with stats
+// @route   GET /api/v1/admin/payments/transactions
+// @access  Admin
+exports.getPaymentTransactions = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      method,
+      search,
+      sort = '-createdAt',
+    } = req.query;
+
+    const query = {};
+
+    if (status) {
+      query.status = status.toUpperCase();
+    }
+
+    if (method) {
+      query.paymentMethod = method;
+    }
+
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      query.$or = [
+        { customerEmail: regex },
+        { customerPhone: regex },
+        { pesapalMerchantReference: regex },
+        { pesapalOrderTrackingId: regex },
+        { paymentMethod: regex },
+      ];
+    }
+
+    const total = await Payment.countDocuments(query);
+    const transactionsDocs = await Payment.find(query)
+      .populate('userId', 'email phoneNumber profile.firstName profile.lastName')
+      .populate('listingId', 'title location.city')
+      .populate('bookingId', 'status checkInDate checkOutDate')
+      .sort(sort)
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const transactions = transactionsDocs.map((payment) => {
+      const plain = payment.toObject();
+      return {
+        id: plain._id,
+        amount: plain.amount,
+        currency: plain.currency,
+        status: plain.status,
+        paymentMethod: plain.paymentMethod,
+        customerEmail: plain.customerEmail,
+        customerPhone: plain.customerPhone,
+        createdAt: plain.createdAt,
+        completedAt: plain.completedAt,
+        merchantReference: plain.pesapalMerchantReference,
+        orderTrackingId: plain.pesapalOrderTrackingId,
+        transactionId: plain.pesapalTransactionId,
+        user: plain.userId,
+        listing: plain.listingId,
+        booking: plain.bookingId,
+      };
+    });
+
+    const aggregationMatch = Object.keys(query).length ? [{ $match: query }] : [];
+
+    const [statsAggregation, statusBreakdown] = await Promise.all([
+      Payment.aggregate([
+        ...aggregationMatch,
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: '$amount' },
+            totalCount: { $sum: 1 },
+            completedAmount: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$amount', 0],
+              },
+            },
+            pendingAmount: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'PENDING'] }, '$amount', 0],
+              },
+            },
+            failedAmount: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'FAILED'] }, '$amount', 0],
+              },
+            },
+          },
+        },
+      ]),
+      Payment.aggregate([
+        ...aggregationMatch,
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            amount: { $sum: '$amount' },
+          },
+        },
+      ]),
+    ]);
+
+    const statsDoc = statsAggregation[0] || {};
+    const stats = {
+      totalAmount: statsDoc.totalAmount || 0,
+      totalCount: statsDoc.totalCount || 0,
+      completedAmount: statsDoc.completedAmount || 0,
+      pendingAmount: statsDoc.pendingAmount || 0,
+      failedAmount: statsDoc.failedAmount || 0,
+      breakdown: statusBreakdown.reduce((acc, item) => ({
+        ...acc,
+        [item._id || 'UNKNOWN']: {
+          count: item.count,
+          amount: item.amount,
+        },
+      }), {}),
+    };
+
+    res.status(200).json({
+      success: true,
+      data: {
+        transactions,
+        pagination: {
+          page: parseInt(page, 10),
+          limit: parseInt(limit, 10),
+          total,
+          pages: Math.ceil(total / limit),
+        },
+        stats,
+      },
     });
   } catch (error) {
     next(error);

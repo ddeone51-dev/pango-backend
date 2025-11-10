@@ -425,6 +425,97 @@
                     <div id="moderationPagination" class="pagination"></div>
                 </div>
 
+                <!-- Payments Page -->
+                <div id="paymentsPage" class="page-content">
+                    <div class="page-header">
+                        <div class="page-header-left">
+                            <h2>Payments Overview</h2>
+                            <p>Monitor all transaction activity</p>
+                        </div>
+                        <div class="page-header-right">
+                            <input type="text" id="paymentSearch" class="search-input" placeholder="Search email, phone or reference">
+                            <select id="paymentStatusFilter" class="filter-select">
+                                <option value="">All Status</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="PENDING">Pending</option>
+                                <option value="FAILED">Failed</option>
+                                <option value="CANCELLED">Cancelled</option>
+                              </select>
+                            <select id="paymentMethodFilter" class="filter-select">
+                                <option value="">All Methods</option>
+                                <option value="M-PESA">M-Pesa</option>
+                                <option value="TIGO_PESA">Tigo Pesa</option>
+                                <option value="AIRTEL_MONEY">Airtel Money</option>
+                                <option value="VISA">Visa</option>
+                                <option value="MASTERCARD">Mastercard</option>
+                                <option value="BANK_TRANSFER">Bank Transfer</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid" style="margin-bottom: 24px;">
+                        <div class="stat-card">
+                            <div class="stat-icon purple">
+                                <i class="fas fa-wallet"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="paymentsTotalAmount">TZS 0</span>
+                                <span class="stat-label">Total Volume</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="paymentsCompletedAmount">TZS 0</span>
+                                <span class="stat-label">Completed</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon orange">
+                                <i class="fas fa-hourglass-half"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="paymentsPendingAmount">TZS 0</span>
+                                <span class="stat-label">Pending</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon red">
+                                <i class="fas fa-times-circle"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="paymentsFailedAmount">TZS 0</span>
+                                <span class="stat-label">Failed</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Customer</th>
+                                    <th>Amount</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                    <th>Booking</th>
+                                    <th>Created</th>
+                                    <th>Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paymentsTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="paymentsPagination" class="pagination"></div>
+                </div>
+
                 <!-- Bookings Page -->
                 <div id="bookingsPage" class="page-content">
                     <div class="page-header">

@@ -12,6 +12,7 @@ const {
   getAllBookings,
   updateBookingStatus,
   generateReports,
+  getPaymentTransactions,
 } = require('../controllers/adminController');
 const { sendBroadcastNotification } = require('../controllers/pushNotificationController');
 const { protectAdmin } = require('../middleware/adminAuth');
@@ -39,6 +40,9 @@ router.delete('/listings/:id', deleteListing);
 // Booking management routes
 router.get('/bookings', getAllBookings);
 router.put('/bookings/:id/status', updateBookingStatus);
+
+// Payments routes
+router.get('/payments/transactions', getPaymentTransactions);
 
 // Reports
 router.get('/reports', generateReports);

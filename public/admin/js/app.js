@@ -780,28 +780,123 @@ document.getElementById('moderationTypeFilter')?.addEventListener('change', () =
 // ==================================
 
 let currentPaymentsPage = 1;
+let paymentSearchTimeout;
 
 async function loadPayments(page = 1) {
     try {
         showLoading();
-        
-        const response = await apiCall(`/admin/payments/transactions?page=${page}&limit=20`);
-        
+
+        const status = document.getElementById('paymentStatusFilter')?.value || '';
+        const method = document.getElementById('paymentMethodFilter')?.value || '';
+        const search = document.getElementById('paymentSearch')?.value.trim() || '';
+
+        const queryParams = new URLSearchParams({
+            page,
+            limit: 20,
+            ...(status && { status }),
+            ...(method && { method }),
+            ...(search && { search }),
+        });
+
+        const response = await apiCall(`/admin/payments/transactions?${queryParams}`);
+
         if (response && response.data) {
-            displayPayments(response.data.transactions || []);
+            const { transactions = [], pagination, stats } = response.data;
+            displayPayments(transactions);
+            updatePaymentsStats(stats);
+            if (pagination) {
+                updatePagination(
+                    'paymentsPagination',
+                    pagination.page,
+                    pagination.pages,
+                    loadPayments
+                );
+                currentPaymentsPage = pagination.page;
+            }
         }
-        
+
         hideLoading();
     } catch (error) {
         hideLoading();
-        showToast('Payments page coming soon', 'info');
+        console.error(error);
+        showToast(error.message || 'Failed to load payments', 'error');
     }
 }
 
 function displayPayments(transactions) {
-    // Placeholder - will be implemented with full UI
-    showToast('Payments feature available in backend API', 'info');
+    const tbody = document.getElementById('paymentsTableBody');
+
+    if (!tbody) return;
+
+    if (!transactions || transactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No transactions found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = transactions.map((payment) => {
+        const customerName = payment.user
+            ? `${payment.user.profile?.firstName || ''} ${payment.user.profile?.lastName || ''}`.trim()
+            : '';
+        const customerLabel = customerName || payment.customerEmail || payment.customerPhone || 'N/A';
+
+        const bookingLabel = payment.booking
+            ? `<span class="badge badge-info">#${payment.booking._id.substring(0, 6).toUpperCase()}</span>`
+            : '<span class="badge badge-secondary">N/A</span>';
+
+        return `
+            <tr>
+                <td><code>${payment.id.substring(0, 8)}...</code></td>
+                <td>
+                    <div class="table-cell-title">${customerLabel}</div>
+                    <div class="table-cell-subtitle">${payment.customerEmail || ''}</div>
+                </td>
+                <td>
+                    <div class="table-cell-title">${formatCurrency(payment.amount)}</div>
+                    <div class="table-cell-subtitle">${payment.currency}</div>
+                </td>
+                <td>${(payment.paymentMethod || 'N/A').replace(/_/g, ' ')}</td>
+                <td><span class="badge ${getPaymentBadge(payment.status)}">${payment.status}</span></td>
+                <td>${bookingLabel}</td>
+                <td>${formatDate(payment.createdAt)}</td>
+                <td>${payment.completedAt ? formatDate(payment.completedAt) : '—'}</td>
+            </tr>
+        `;
+    }).join('');
 }
+
+function updatePaymentsStats(stats = {}) {
+    const {
+        totalAmount = 0,
+        completedAmount = 0,
+        pendingAmount = 0,
+        failedAmount = 0,
+    } = stats;
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = typeof value === 'number' ? formatCurrency(value) : value;
+        }
+    };
+
+    setText('paymentsTotalAmount', totalAmount);
+    setText('paymentsCompletedAmount', completedAmount);
+    setText('paymentsPendingAmount', pendingAmount);
+    setText('paymentsFailedAmount', failedAmount);
+}
+
+document.getElementById('paymentStatusFilter')?.addEventListener('change', () => loadPayments(1));
+document.getElementById('paymentMethodFilter')?.addEventListener('change', () => loadPayments(1));
+document.getElementById('paymentSearch')?.addEventListener('input', () => {
+    clearTimeout(paymentSearchTimeout);
+    paymentSearchTimeout = setTimeout(() => loadPayments(1), 400);
+});
+document.getElementById('paymentSearch')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        loadPayments(1);
+    }
+});
 
 // ==================================
 // Disputes Management
