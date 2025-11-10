@@ -66,6 +66,16 @@ function formatCurrency(amount) {
     return 'TZS ' + amount.toLocaleString();
 }
 
+function extractListingTitle(listing) {
+    if (!listing) return '';
+    if (typeof listing === 'string') return listing;
+    if (listing.title) {
+        if (typeof listing.title === 'string') return listing.title;
+        return listing.title.en || listing.title.sw || '';
+    }
+    return listing.name || '';
+}
+
 function getInitials(firstName, lastName) {
     return (firstName?.charAt(0) || '') + (lastName?.charAt(0) || '');
 }
@@ -200,6 +210,9 @@ function handleNavigation(e) {
             break;
         case 'users':
             loadUsers();
+            break;
+        case 'hosts':
+            loadHosts();
             break;
         case 'listings':
             loadListings();
@@ -513,6 +526,147 @@ async function deleteUser(userId) {
 // Add event listeners for user filters
 document.getElementById('userSearch')?.addEventListener('input', () => loadUsers(1));
 document.getElementById('userRoleFilter')?.addEventListener('change', () => loadUsers(1));
+
+// ==================================
+// Host Management
+// ==================================
+
+let currentHostsPage = 1;
+let hostSearchTimeout;
+
+async function loadHosts(page = 1) {
+    try {
+        showLoading();
+
+        const search = document.getElementById('hostSearch')?.value?.trim() || '';
+        const status = document.getElementById('hostStatusFilter')?.value || '';
+
+        const queryParams = new URLSearchParams({
+            page,
+            limit: 10,
+            ...(search && { search }),
+            ...(status && { status }),
+        });
+
+        const response = await apiCall(`/admin/hosts?${queryParams}`);
+        const hosts = response.data || [];
+
+        displayHosts(hosts);
+
+        if (response.pagination) {
+            updatePagination('hostsPagination', response.pagination.page, response.pagination.pages, loadHosts);
+            currentHostsPage = response.pagination.page;
+        }
+
+        hideLoading();
+    } catch (error) {
+        hideLoading();
+        console.error(error);
+        showToast(error.message || 'Failed to load hosts', 'error');
+    }
+}
+
+function displayHosts(hosts) {
+    const tbody = document.getElementById('hostsTableBody');
+
+    if (!tbody) return;
+
+    if (!hosts || hosts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">No host applications found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = hosts.map((host) => {
+        const name = `${host.profile?.firstName || ''} ${host.profile?.lastName || ''}`.trim() || 'N/A';
+        const status = host.hostStatus || 'not_requested';
+        const statusBadge = getHostStatusBadge(status);
+        const requestedAt = host.updatedAt || host.createdAt;
+
+        const actionButtons = [];
+
+        if (status !== 'approved') {
+            actionButtons.push(`
+                <button class="btn btn-primary" onclick="updateHostStatus('${host._id}', 'approved')">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+            `);
+        }
+
+        if (status !== 'rejected') {
+            actionButtons.push(`
+                <button class="btn btn-danger" onclick="updateHostStatus('${host._id}', 'rejected')">
+                    <i class="fas fa-times"></i> Reject
+                </button>
+            `);
+        }
+
+        if (status !== 'pending') {
+            actionButtons.push(`
+                <button class="btn btn-secondary" onclick="updateHostStatus('${host._id}', 'pending')">
+                    <i class="fas fa-hourglass-half"></i> Mark Pending
+                </button>
+            `);
+        }
+
+        return `
+            <tr>
+                <td><code>${host._id.substring(0, 8)}...</code></td>
+                <td>${name}</td>
+                <td>${host.email}</td>
+                <td>${host.phoneNumber || 'N/A'}</td>
+                <td><span class="badge ${statusBadge}">${status.toUpperCase()}</span></td>
+                <td>${requestedAt ? formatDate(requestedAt) : '—'}</td>
+                <td>
+                    <div class="table-row-actions">
+                        ${actionButtons.join('')}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getHostStatusBadge(status) {
+    switch ((status || '').toLowerCase()) {
+        case 'approved':
+            return 'badge-success';
+        case 'pending':
+            return 'badge-warning';
+        case 'rejected':
+            return 'badge-danger';
+        default:
+            return 'badge-info';
+    }
+}
+
+async function updateHostStatus(hostId, newStatus) {
+    try {
+        showLoading();
+        await apiCall(`/admin/hosts/${hostId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: newStatus }),
+        });
+        hideLoading();
+        showToast(`Host status updated to ${newStatus}`, 'success');
+        loadHosts(currentHostsPage);
+    } catch (error) {
+        hideLoading();
+        console.error(error);
+        showToast(error.message || 'Failed to update host status', 'error');
+    }
+}
+
+document.getElementById('hostStatusFilter')?.addEventListener('change', () => loadHosts(1));
+document.getElementById('hostSearch')?.addEventListener('input', () => {
+    clearTimeout(hostSearchTimeout);
+    hostSearchTimeout = setTimeout(() => loadHosts(1), 400);
+});
+document.getElementById('hostSearch')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        loadHosts(1);
+    }
+});
 
 // ==================================
 // Listings Management
@@ -834,21 +988,30 @@ function displayPayments(transactions) {
     }
 
     tbody.innerHTML = transactions.map((payment) => {
-        const customerName = payment.user
-            ? `${payment.user.profile?.firstName || ''} ${payment.user.profile?.lastName || ''}`.trim()
-            : '';
-        const customerLabel = customerName || payment.customerEmail || payment.customerPhone || 'N/A';
+        const customerLabel = payment.customerName
+            || payment.customerEmail
+            || payment.customerPhone
+            || 'N/A';
+        const subtitleParts = [
+            payment.customerEmail || '',
+            payment.customerPhone || '',
+        ].filter(Boolean);
+        const subtitleText = subtitleParts.join(' • ');
 
-        const bookingLabel = payment.booking
-            ? `<span class="badge badge-info">#${payment.booking._id.substring(0, 6).toUpperCase()}</span>`
+        const bookingId = payment.booking?._id || payment.booking || '';
+        const bookingLabel = bookingId
+            ? `<span class="badge badge-info">#${bookingId.toString().substring(0, 6).toUpperCase()}</span>`
             : '<span class="badge badge-secondary">N/A</span>';
+        const listingSubtitle = payment.listingTitle
+            || extractListingTitle(payment.listing)
+            || '';
 
         return `
             <tr>
                 <td><code>${payment.id.substring(0, 8)}...</code></td>
                 <td>
                     <div class="table-cell-title">${customerLabel}</div>
-                    <div class="table-cell-subtitle">${payment.customerEmail || ''}</div>
+                    <div class="table-cell-subtitle">${subtitleText || ''}</div>
                 </td>
                 <td>
                     <div class="table-cell-title">${formatCurrency(payment.amount)}</div>
@@ -856,7 +1019,10 @@ function displayPayments(transactions) {
                 </td>
                 <td>${(payment.paymentMethod || 'N/A').replace(/_/g, ' ')}</td>
                 <td><span class="badge ${getPaymentBadge(payment.status)}">${payment.status}</span></td>
-                <td>${bookingLabel}</td>
+                <td>
+                    ${bookingLabel}
+                    <div class="table-cell-subtitle">${listingSubtitle}</div>
+                </td>
                 <td>${formatDate(payment.createdAt)}</td>
                 <td>${payment.completedAt ? formatDate(payment.completedAt) : '—'}</td>
             </tr>
@@ -913,6 +1079,51 @@ document.getElementById('paymentSearch')?.addEventListener('keypress', (e) => {
         loadPayments(1);
     }
 });
+document.getElementById('exportPaymentsBtn')?.addEventListener('click', exportPayments);
+
+async function exportPayments() {
+    try {
+        showLoading();
+
+        const status = document.getElementById('paymentStatusFilter')?.value || '';
+        const method = document.getElementById('paymentMethodFilter')?.value || '';
+        const search = document.getElementById('paymentSearch')?.value.trim() || '';
+
+        const queryParams = new URLSearchParams({
+            ...(status && { status }),
+            ...(method && { method }),
+            ...(search && { search }),
+        });
+
+        const response = await fetch(`${API_BASE_URL}/admin/payments/export?${queryParams}`, {
+            headers: {
+                ...(authToken && { Authorization: `Bearer ${authToken}` }),
+            },
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || 'Failed to export payments');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `payments-${Date.now()}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        hideLoading();
+        showToast('Payments exported successfully', 'success');
+    } catch (error) {
+        hideLoading();
+        console.error(error);
+        showToast(error.message || 'Failed to export payments', 'error');
+    }
+}
 
 // ==================================
 // Disputes Management
@@ -1227,6 +1438,7 @@ document.getElementById('revenueChartPeriod')?.addEventListener('change', async 
 window.viewUser = viewUser;
 window.editUser = editUser;
 window.deleteUser = deleteUser;
+window.updateHostStatus = updateHostStatus;
 window.approveListing = approveListing;
 window.rejectListing = rejectListing;
 window.deleteListing = deleteListing;

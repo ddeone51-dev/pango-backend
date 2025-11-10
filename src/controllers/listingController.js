@@ -1,4 +1,5 @@
 const Listing = require('../models/Listing');
+const User = require('../models/User');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
@@ -149,6 +150,20 @@ exports.getListing = async (req, res, next) => {
 // @access  Private (Host)
 exports.createListing = async (req, res, next) => {
   try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    if (user.role !== 'host') {
+      return next(new AppError('Only hosts can create listings', 403));
+    }
+
+    if (user.hostStatus !== 'approved') {
+      return next(new AppError('Your host account is not approved yet. Please wait for admin approval.', 403));
+    }
+
     // Add host ID from logged in user
     req.body.hostId = req.user.id;
 

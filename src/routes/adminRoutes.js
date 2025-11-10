@@ -13,6 +13,9 @@ const {
   updateBookingStatus,
   generateReports,
   getPaymentTransactions,
+  exportPaymentTransactions,
+  getHostRequests,
+  updateHostStatus,
 } = require('../controllers/adminController');
 const { sendBroadcastNotification } = require('../controllers/pushNotificationController');
 const { protectAdmin } = require('../middleware/adminAuth');
@@ -37,12 +40,17 @@ router.get('/listings', getAllListings);
 router.put('/listings/:id/status', updateListingStatus);
 router.delete('/listings/:id', deleteListing);
 
+// Host management routes
+router.get('/hosts', getHostRequests);
+router.put('/hosts/:id/status', updateHostStatus);
+
 // Booking management routes
 router.get('/bookings', getAllBookings);
 router.put('/bookings/:id/status', updateBookingStatus);
 
 // Payments routes
 router.get('/payments/transactions', getPaymentTransactions);
+router.get('/payments/export', exportPaymentTransactions);
 
 // Reports
 router.get('/reports', generateReports);

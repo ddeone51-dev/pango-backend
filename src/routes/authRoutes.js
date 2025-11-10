@@ -10,6 +10,7 @@ const {
   sendPhoneVerificationCode,
   verifyPhone,
   sendEmailVerificationCode,
+  requestHostRole,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -19,6 +20,7 @@ router.post('/register', register);
 router.post('/login', login);
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
+router.post('/request-host', protect, requestHostRole);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password/:resetToken', resetPassword);
 router.post('/verify-email', verifyEmail);

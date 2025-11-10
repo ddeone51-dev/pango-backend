@@ -13,11 +13,13 @@ exports.register = async (req, res, next) => {
     const { email, phoneNumber, password, firstName, lastName, role } = req.body;
 
     // Create user
+    const normalizedRole = role === 'admin' ? 'guest' : (role || 'guest');
     const user = await User.create({
       email,
       phoneNumber,
       password,
-      role: role || 'guest',
+      role: normalizedRole,
+      hostStatus: normalizedRole === 'host' ? 'pending' : 'not_requested',
       profile: {
         firstName,
         lastName,
@@ -125,6 +127,46 @@ exports.getMe = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Request host role
+// @route   POST /api/v1/auth/request-host
+// @access  Private
+exports.requestHostRole = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    if (user.role === 'admin') {
+      return next(new AppError('Admins cannot request host privileges', 400));
+    }
+
+    if (user.hostStatus === 'approved') {
+      return res.status(200).json({
+        success: true,
+        message: 'You are already an approved host.',
+        data: user,
+      });
+    }
+
+    user.role = 'host';
+    user.hostStatus = 'pending';
+
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`User ${user.email} requested host role`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Host request submitted. An admin will review your application shortly.',
       data: user,
     });
   } catch (error) {

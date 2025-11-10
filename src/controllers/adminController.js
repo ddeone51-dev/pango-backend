@@ -5,6 +5,181 @@ const Payment = require('../models/Payment');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
+const buildName = (profile = {}, fallback = '') => {
+  const first = profile.firstName || '';
+  const last = profile.lastName || '';
+  const full = `${first} ${last}`.trim();
+  return full || fallback || '';
+};
+
+const extractListingTitle = (listing) => {
+  if (!listing) return '';
+  if (typeof listing === 'string') return listing;
+  if (listing.title) {
+    if (typeof listing.title === 'string') return listing.title;
+    return listing.title.en || listing.title.sw || '';
+  }
+  return listing.name || '';
+};
+
+const csvEscape = (value) => {
+  if (value === null || value === undefined) return '';
+  const stringValue = value instanceof Date ? value.toISOString() : value.toString();
+  if (stringValue.includes('"') || stringValue.includes(',') || stringValue.includes('\n')) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const buildPaymentDataset = async ({ statusUpper, methodUpper, searchRegex }) => {
+  const paymentQuery = {};
+  if (statusUpper) paymentQuery.status = statusUpper;
+  if (methodUpper) paymentQuery.paymentMethod = methodUpper;
+  if (searchRegex) {
+    paymentQuery.$or = [
+      { customerEmail: searchRegex },
+      { customerPhone: searchRegex },
+      { pesapalMerchantReference: searchRegex },
+      { pesapalOrderTrackingId: searchRegex },
+      { paymentMethod: searchRegex },
+    ];
+  }
+
+  const bookingQuery = {};
+  if (methodUpper) {
+    bookingQuery['payment.method'] = methodUpper.toLowerCase();
+  } else {
+    bookingQuery['payment.method'] = 'zenopay';
+  }
+  if (statusUpper) bookingQuery['payment.status'] = statusUpper.toLowerCase();
+  if (searchRegex) {
+    bookingQuery.$or = [
+      { 'guestDetails.email': searchRegex },
+      { 'guestDetails.phoneNumber': searchRegex },
+      { orderId: searchRegex },
+      { 'payment.transactionId': searchRegex },
+    ];
+  }
+
+  const [paymentDocs, bookingDocs] = await Promise.all([
+    Payment.find(paymentQuery)
+      .populate('userId', 'email phoneNumber profile.firstName profile.lastName')
+      .populate('listingId', 'title location.city name')
+      .populate('bookingId', 'status checkInDate checkOutDate'),
+    Booking.find(bookingQuery)
+      .populate('guestId', 'email phoneNumber profile.firstName profile.lastName')
+      .populate('listingId', 'title location.city name')
+      .select('pricing payment guestDetails listingId createdAt updatedAt orderId status'),
+  ]);
+
+  const paymentTransactions = paymentDocs.map((doc) => {
+    const plain = doc.toObject({ virtuals: true });
+    const user = plain.userId || {};
+    const listing = plain.listingId || {};
+    const customerName = buildName(user.profile, '');
+    const customerEmail = plain.customerEmail || user.email || null;
+    const customerPhone = plain.customerPhone || user.phoneNumber || null;
+    const listingTitle = extractListingTitle(listing);
+
+    return {
+      id: plain._id.toString(),
+      source: 'payment',
+      amount: plain.amount || 0,
+      currency: plain.currency || 'TZS',
+      status: (plain.status || 'UNKNOWN').toString().toUpperCase(),
+      paymentMethod: (plain.paymentMethod || 'UNKNOWN').toString().toUpperCase(),
+      customerName,
+      customerEmail,
+      customerPhone,
+      createdAt: plain.createdAt,
+      completedAt: plain.completedAt,
+      merchantReference: plain.pesapalMerchantReference || '',
+      orderTrackingId: plain.pesapalOrderTrackingId || '',
+      transactionId: plain.pesapalTransactionId || '',
+      user,
+      listing,
+      listingTitle,
+      booking: plain.bookingId || null,
+    };
+  });
+
+  const bookingTransactions = bookingDocs.map((doc) => {
+    const plain = doc.toObject({ virtuals: true });
+    const guest = plain.guestId || {};
+    const guestDetails = plain.guestDetails || {};
+    const listing = plain.listingId || {};
+    const customerName = buildName(guest.profile, guestDetails.fullName || '');
+    const customerEmail = guestDetails.email || guest.email || null;
+    const customerPhone = guestDetails.phoneNumber || guest.phoneNumber || null;
+    const listingTitle = extractListingTitle(listing);
+    const paymentInfo = plain.payment || {};
+
+    return {
+      id: `BOOKING-${plain._id}`,
+      source: 'booking',
+      amount: plain.pricing?.total || 0,
+      currency: plain.pricing?.currency || 'TZS',
+      status: (paymentInfo.status || 'PENDING').toString().toUpperCase(),
+      paymentMethod: (paymentInfo.method || 'ZENOPAY').toString().toUpperCase(),
+      customerName,
+      customerEmail,
+      customerPhone,
+      createdAt: plain.createdAt,
+      completedAt: paymentInfo.paidAt || null,
+      merchantReference: plain.orderId || '',
+      orderTrackingId: paymentInfo.orderId || plain.orderId || '',
+      transactionId: paymentInfo.transactionId || '',
+      user: guest,
+      listing,
+      listingTitle,
+      booking: { _id: plain._id, status: plain.status },
+    };
+  }).filter((transaction) => {
+    if (!methodUpper) return true;
+    return transaction.paymentMethod === methodUpper;
+  });
+
+  const combinedTransactions = [...paymentTransactions, ...bookingTransactions]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const stats = combinedTransactions.reduce((acc, tx) => {
+    const amount = tx.amount || 0;
+    const statusKey = tx.status || 'UNKNOWN';
+
+    acc.totalAmount += amount;
+    acc.totalCount += 1;
+
+    if (statusKey === 'COMPLETED') {
+      acc.completedAmount += amount;
+      acc.completedCount += 1;
+    } else if (statusKey === 'PENDING') {
+      acc.pendingAmount += amount;
+      acc.pendingCount += 1;
+    } else if (statusKey === 'FAILED' || statusKey === 'CANCELLED') {
+      acc.failedAmount += amount;
+      acc.failedCount += 1;
+    }
+
+    acc.breakdown[statusKey] = acc.breakdown[statusKey] || { count: 0, amount: 0 };
+    acc.breakdown[statusKey].count += 1;
+    acc.breakdown[statusKey].amount += amount;
+
+    return acc;
+  }, {
+    totalAmount: 0,
+    totalCount: 0,
+    completedAmount: 0,
+    pendingAmount: 0,
+    failedAmount: 0,
+    completedCount: 0,
+    pendingCount: 0,
+    failedCount: 0,
+    breakdown: {},
+  });
+
+  return { transactions: combinedTransactions, stats };
+};
+
 // @desc    Get dashboard statistics
 // @route   GET /api/v1/admin/dashboard/stats
 // @access  Admin
@@ -291,12 +466,17 @@ exports.getAllUsers = async (req, res, next) => {
       role,
       search,
       sort = '-createdAt',
+      hostStatus,
     } = req.query;
 
     const query = {};
 
     if (role) {
       query.role = role;
+    }
+
+    if (hostStatus) {
+      query.hostStatus = hostStatus;
     }
 
     if (search) {
@@ -322,6 +502,94 @@ exports.getAllUsers = async (req, res, next) => {
       pages: Math.ceil(total / limit),
       currentPage: parseInt(page),
       data: users,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get host requests with pagination and filters
+// @route   GET /api/v1/admin/hosts
+// @access  Admin
+exports.getHostRequests = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      search,
+      sort = '-createdAt',
+    } = req.query;
+
+    const query = { role: 'host' };
+
+    if (status) {
+      query.hostStatus = status;
+    }
+
+    if (search) {
+      query.$or = [
+        { email: { $regex: search, $options: 'i' } },
+        { phoneNumber: { $regex: search, $options: 'i' } },
+        { 'profile.firstName': { $regex: search, $options: 'i' } },
+        { 'profile.lastName': { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const total = await User.countDocuments(query);
+    const hosts = await User.find(query)
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit * 1)
+      .select('-password');
+
+    res.status(200).json({
+      success: true,
+      data: hosts,
+      pagination: {
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update host status
+// @route   PUT /api/v1/admin/hosts/:id/status
+// @access  Admin
+exports.updateHostStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['pending', 'approved', 'rejected'];
+
+    if (!validStatuses.includes(status)) {
+      return next(new AppError('Invalid host status', 400));
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user || user.role !== 'host') {
+      return next(new AppError('Host not found', 404));
+    }
+
+    user.hostStatus = status;
+    if (status === 'approved') {
+      user.role = 'host';
+    } else if (status === 'pending') {
+      user.role = 'host';
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`Admin updated host ${user.email} status to ${status}`);
+
+    res.status(200).json({
+      success: true,
+      data: user,
     });
   } catch (error) {
     next(error);
@@ -384,6 +652,14 @@ exports.updateUser = async (req, res, next) => {
     if (role) updateData.role = role;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (isVerified !== undefined) updateData.isVerified = isVerified;
+
+    if (role) {
+      if (role === 'host') {
+        updateData.hostStatus = 'pending';
+      } else if (role !== 'admin') {
+        updateData.hostStatus = 'not_requested';
+      }
+    }
 
     const user = await User.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
@@ -621,141 +897,16 @@ exports.getPaymentTransactions = async (req, res, next) => {
     const methodUpper = method ? method.toUpperCase() : '';
     const searchRegex = search ? new RegExp(search, 'i') : null;
 
-    const paymentQuery = {};
-    if (statusUpper) paymentQuery.status = statusUpper;
-    if (methodUpper && methodUpper !== 'ZENOPAY') paymentQuery.paymentMethod = methodUpper;
-    if (searchRegex) {
-      paymentQuery.$or = [
-        { customerEmail: searchRegex },
-        { customerPhone: searchRegex },
-        { pesapalMerchantReference: searchRegex },
-        { pesapalOrderTrackingId: searchRegex },
-        { paymentMethod: searchRegex },
-      ];
-    }
-
-    const bookingQuery = { 'payment.method': 'zenopay' };
-    if (statusUpper) bookingQuery['payment.status'] = statusUpper.toLowerCase();
-    if (methodUpper && methodUpper !== 'ZENOPAY') bookingQuery['payment.method'] = methodUpper.toLowerCase();
-    if (searchRegex) {
-      bookingQuery.$or = [
-        { 'guestDetails.email': searchRegex },
-        { 'guestDetails.phoneNumber': searchRegex },
-        { orderId: searchRegex },
-        { 'payment.transactionId': searchRegex },
-      ];
-    }
-
-    const [paymentDocs, bookingDocs] = await Promise.all([
-      Payment.find(paymentQuery)
-        .populate('userId', 'email phoneNumber profile.firstName profile.lastName')
-        .populate('listingId', 'title location.city')
-        .populate('bookingId', 'status checkInDate checkOutDate')
-        .sort('-createdAt'),
-      Booking.find(bookingQuery)
-        .populate('guestId', 'email phoneNumber profile.firstName profile.lastName')
-        .populate('listingId', 'title location.city')
-        .select('pricing payment guestId listingId createdAt updatedAt orderId guestDetails'),
-    ]);
-
-    const paymentTransactions = paymentDocs.map((payment) => {
-      const plain = payment.toObject();
-      return {
-        id: plain._id.toString(),
-        source: 'payment',
-        amount: plain.amount,
-        currency: plain.currency,
-        status: plain.status,
-        paymentMethod: plain.paymentMethod,
-        customerEmail: plain.customerEmail,
-        customerPhone: plain.customerPhone,
-        createdAt: plain.createdAt,
-        completedAt: plain.completedAt,
-        merchantReference: plain.pesapalMerchantReference,
-        orderTrackingId: plain.pesapalOrderTrackingId,
-        transactionId: plain.pesapalTransactionId,
-        user: plain.userId,
-        listing: plain.listingId,
-        booking: plain.bookingId,
-      };
+    const { transactions, stats } = await buildPaymentDataset({
+      statusUpper,
+      methodUpper,
+      searchRegex,
     });
 
-    const bookingTransactions = bookingDocs
-      .filter((booking) => booking.pricing?.total)
-      .map((booking) => {
-        const plain = booking.toObject({ virtuals: true });
-        const statusValue = plain.payment?.status
-          ? plain.payment.status.toUpperCase()
-          : 'PENDING';
-        const methodValue = plain.payment?.method
-          ? plain.payment.method.toUpperCase()
-          : 'ZENOPAY';
-        const guest = plain.guestId || {};
-        const guestDetails = plain.guestDetails || {};
-        return {
-          id: `BOOKING-${plain._id}`,
-          source: 'booking',
-          amount: plain.pricing?.total || 0,
-          currency: plain.pricing?.currency || 'TZS',
-          status: statusValue,
-          paymentMethod: methodValue,
-          customerEmail: guestDetails.email || guest.email || null,
-          customerPhone: guestDetails.phoneNumber || guest.phoneNumber || null,
-          createdAt: plain.createdAt,
-          completedAt: plain.payment?.paidAt || null,
-          merchantReference: plain.orderId,
-          orderTrackingId: plain.payment?.orderId || plain.orderId,
-          transactionId: plain.payment?.transactionId || null,
-          user: plain.guestId,
-          listing: plain.listingId,
-          booking: { _id: plain._id },
-        };
-      })
-      .filter((tx) => {
-        if (!methodUpper) return true;
-        return tx.paymentMethod === methodUpper;
-      });
-
-    const combinedTransactions = [...paymentTransactions, ...bookingTransactions]
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    const total = combinedTransactions.length;
+    const total = transactions.length;
     const pages = Math.ceil(total / limitNum) || 1;
     const startIndex = (pageNum - 1) * limitNum;
-    const paginatedTransactions = combinedTransactions.slice(startIndex, startIndex + limitNum);
-
-    const statsAccumulator = combinedTransactions.reduce((acc, tx) => {
-      const amount = tx.amount || 0;
-      const statusKey = tx.status || 'UNKNOWN';
-      acc.totalAmount += amount;
-      acc.totalCount += 1;
-      if (statusKey === 'COMPLETED') {
-        acc.completedAmount += amount;
-        acc.completedCount += 1;
-      }
-      if (statusKey === 'PENDING') {
-        acc.pendingAmount += amount;
-        acc.pendingCount += 1;
-      }
-      if (statusKey === 'FAILED' || statusKey === 'CANCELLED') {
-        acc.failedAmount += amount;
-        acc.failedCount += 1;
-      }
-      acc.breakdown[statusKey] = acc.breakdown[statusKey] || { count: 0, amount: 0 };
-      acc.breakdown[statusKey].count += 1;
-      acc.breakdown[statusKey].amount += amount;
-      return acc;
-    }, {
-      totalAmount: 0,
-      totalCount: 0,
-      completedAmount: 0,
-      pendingAmount: 0,
-      failedAmount: 0,
-      completedCount: 0,
-      pendingCount: 0,
-      failedCount: 0,
-      breakdown: {},
-    });
+    const paginatedTransactions = transactions.slice(startIndex, startIndex + limitNum);
 
     res.status(200).json({
       success: true,
@@ -767,9 +918,83 @@ exports.getPaymentTransactions = async (req, res, next) => {
           total,
           pages,
         },
-        stats: statsAccumulator,
+        stats,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Export payment transactions as CSV
+// @route   GET /api/v1/admin/payments/export
+// @access  Admin
+exports.exportPaymentTransactions = async (req, res, next) => {
+  try {
+    const { status, method, search } = req.query;
+    const statusUpper = status ? status.toUpperCase() : '';
+    const methodUpper = method ? method.toUpperCase() : '';
+    const searchRegex = search ? new RegExp(search, 'i') : null;
+
+    const { transactions } = await buildPaymentDataset({
+      statusUpper,
+      methodUpper,
+      searchRegex,
+    });
+
+    const header = [
+      'ID',
+      'Source',
+      'Status',
+      'Amount',
+      'Currency',
+      'Method',
+      'Customer Name',
+      'Customer Email',
+      'Customer Phone',
+      'Booking ID',
+      'Listing',
+      'Created At',
+      'Completed At',
+      'Reference',
+      'Order Tracking',
+      'Transaction ID',
+    ];
+
+    const rows = transactions.map((tx) => {
+      const bookingId = tx.booking?._id || tx.booking || '';
+      const listingTitle = tx.listingTitle || extractListingTitle(tx.listing);
+      return [
+        tx.id,
+        tx.source,
+        tx.status,
+        tx.amount,
+        tx.currency,
+        tx.paymentMethod,
+        tx.customerName || '',
+        tx.customerEmail || '',
+        tx.customerPhone || '',
+        bookingId,
+        listingTitle || '',
+        tx.createdAt ? new Date(tx.createdAt).toISOString() : '',
+        tx.completedAt ? new Date(tx.completedAt).toISOString() : '',
+        tx.merchantReference || '',
+        tx.orderTrackingId || '',
+        tx.transactionId || '',
+      ];
+    });
+
+    const csvContent = [
+      header.map(csvEscape).join(','),
+      ...rows.map((row) => row.map(csvEscape).join(',')),
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="payments-export-${new Date().toISOString().split('T')[0]}.csv"`
+    );
+    res.status(200).send(csvContent);
   } catch (error) {
     next(error);
   }

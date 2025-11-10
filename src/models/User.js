@@ -31,6 +31,11 @@ const UserSchema = new mongoose.Schema({
     enum: ['guest', 'host', 'admin'],
     default: 'guest',
   },
+  hostStatus: {
+    type: String,
+    enum: ['not_requested', 'pending', 'approved', 'rejected'],
+    default: 'not_requested',
+  },
   profile: {
     firstName: {
       type: String,
@@ -136,6 +141,20 @@ UserSchema.pre('save', async function(next) {
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Maintain host status when role changes
+UserSchema.pre('save', function(next) {
+  if (this.isModified('role')) {
+    if (this.role === 'host') {
+      if (this.hostStatus === 'not_requested') {
+        this.hostStatus = 'pending';
+      }
+    } else if (this.role !== 'admin') {
+      this.hostStatus = 'not_requested';
+    }
+  }
+  next();
 });
 
 // Match password
