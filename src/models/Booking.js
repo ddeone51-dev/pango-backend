@@ -67,6 +67,7 @@ const BookingSchema = new mongoose.Schema({
     type: String,
     enum: [
       'pending',
+      'awaiting_arrival_confirmation',
       'confirmed',
       'cancelled_by_guest',
       'cancelled_by_host',
@@ -126,6 +127,57 @@ const BookingSchema = new mongoose.Schema({
   checkInConfirmed: {
     type: Boolean,
     default: false,
+  },
+  arrival: {
+    requiresConfirmation: {
+      type: Boolean,
+      default: true,
+    },
+    confirmedAt: Date,
+    confirmedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    autoConfirmedAt: Date,
+  },
+  payout: {
+    status: {
+      type: String,
+      enum: ['pending', 'ready_for_release', 'processing', 'completed', 'failed', 'cancelled'],
+      default: 'pending',
+    },
+    hostAmount: {
+      type: Number,
+      default: 0,
+    },
+    platformFee: {
+      type: Number,
+      default: 0,
+    },
+    currency: {
+      type: String,
+      default: 'TZS',
+    },
+    method: {
+      type: String,
+      enum: ['bank_account', 'mobile_money'],
+    },
+    destination: {
+      accountName: String,
+      accountNumber: String,
+      bankName: String,
+      phoneNumber: String,
+      provider: String,
+    },
+    autoReleaseAt: Date,
+    releasedAt: Date,
+    releaseReason: {
+      type: String,
+      enum: ['guest_confirmed', 'auto_release', 'manual_admin'],
+      default: 'guest_confirmed',
+    },
+    failureReason: String,
+    transactionReference: String,
   },
   checkOutConfirmed: {
     type: Boolean,

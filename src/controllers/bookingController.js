@@ -5,6 +5,7 @@ const Listing = require('../models/Listing');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const pushNotificationService = require('../services/pushNotificationService');
+const { calculateSplit, releaseHostPayout } = require('../services/payoutService');
 
 const formatCurrency = (amount, currency = 'TZS') => new Intl.NumberFormat('en-TZ', {
   style: 'currency',
@@ -68,7 +69,7 @@ exports.createBooking = async (req, res, next) => {
     // Check for overlapping bookings
     const overlappingBooking = await Booking.findOne({
       listingId,
-      status: { $in: ['confirmed', 'pending', 'in_progress'] },
+      status: { $in: ['confirmed', 'pending', 'in_progress', 'awaiting_arrival_confirmation'] },
       $or: [
         {
           checkInDate: { $lt: checkOut },
@@ -87,6 +88,10 @@ exports.createBooking = async (req, res, next) => {
     const serviceFee = subtotal * 0.1; // 10% service fee
     const taxes = subtotal * 0.18; // 18% VAT
     const total = subtotal + cleaningFee + serviceFee + taxes;
+    const split = calculateSplit(total);
+    const autoReleaseAt = new Date(checkIn);
+    const autoReleaseHours = Number(process.env.PAYOUT_AUTO_RELEASE_HOURS || 24);
+    autoReleaseAt.setHours(autoReleaseAt.getHours() + autoReleaseHours);
 
     // Create booking
     const booking = await Booking.create({
@@ -110,6 +115,16 @@ exports.createBooking = async (req, res, next) => {
         method: paymentMethod,
         orderId: req.body.orderId,
         transactionId: req.body.transactionId,
+      },
+      arrival: {
+        requiresConfirmation: true,
+      },
+      payout: {
+        status: 'pending',
+        platformFee: split.platformFee,
+        hostAmount: split.hostAmount,
+        currency: listing.pricing.currency,
+        autoReleaseAt,
       },
       guestDetails,
     });
@@ -250,20 +265,93 @@ exports.paymentConfirmBooking = async (req, res, next) => {
       return next(new AppError('Booking not found', 404));
     }
 
-    if (booking.status !== 'pending') {
+    if (!['pending', 'confirmed'].includes(booking.status)) {
       return next(new AppError('Booking cannot be confirmed', 400));
     }
 
     // Update booking status and payment info
-    booking.status = 'confirmed';
+    booking.status = 'awaiting_arrival_confirmation';
     booking.payment.status = 'completed';
     booking.payment.paidAt = new Date();
+    booking.arrival = booking.arrival || { requiresConfirmation: true };
+    booking.arrival.requiresConfirmation = true;
+    booking.checkInConfirmed = false;
+
+    booking.payout = booking.payout || {};
+    const split = calculateSplit(booking.pricing?.total || 0);
+    booking.payout.platformFee = split.platformFee;
+    booking.payout.hostAmount = split.hostAmount;
+    booking.payout.status = 'pending';
+    booking.payout.currency = booking.pricing?.currency || 'TZS';
+    const autoReleaseHours = Number(process.env.PAYOUT_AUTO_RELEASE_HOURS || 24);
+    const autoReleaseAt = new Date(booking.checkInDate);
+    autoReleaseAt.setHours(autoReleaseAt.getHours() + autoReleaseHours);
+    booking.payout.autoReleaseAt = autoReleaseAt;
+
     await booking.save();
 
     res.status(200).json({
       success: true,
       data: booking,
       message: 'Booking payment confirmed successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Guest confirms arrival (releases host payout)
+// @route   PUT /api/v1/bookings/:id/confirm-arrival
+// @access  Private (Guest/Admin)
+exports.confirmArrival = async (req, res, next) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return next(new AppError('Booking not found', 404));
+    }
+
+    const isGuest = booking.guestId.toString() === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isGuest && !isAdmin) {
+      return next(new AppError('Only the guest can confirm arrival', 403));
+    }
+
+    if (booking.payment?.status !== 'completed') {
+      return next(new AppError('Payment not completed yet', 400));
+    }
+
+    if (booking.checkInConfirmed) {
+      return res.status(200).json({
+        success: true,
+        data: booking,
+        message: 'Arrival already confirmed',
+      });
+    }
+
+    booking.checkInConfirmed = true;
+    booking.status = 'in_progress';
+    booking.arrival = booking.arrival || {};
+    booking.arrival.confirmedAt = new Date();
+    booking.arrival.confirmedBy = req.user.id;
+    booking.payout = booking.payout || {};
+    booking.payout.status = 'ready_for_release';
+    await booking.save();
+
+    let payoutError;
+    try {
+      await releaseHostPayout(booking, { reason: 'guest_confirmed', initiatedBy: req.user.id });
+    } catch (err) {
+      payoutError = err.message;
+    }
+
+    res.status(payoutError ? 202 : 200).json({
+      success: !payoutError,
+      data: booking,
+      message: payoutError
+        ? `Arrival confirmed but payout pending: ${payoutError}`
+        : 'Arrival confirmed and payout released',
     });
   } catch (error) {
     next(error);
@@ -366,12 +454,15 @@ exports.downloadReceipt = async (req, res, next) => {
 exports.getHostCalendar = async (req, res, next) => {
   try {
     const hostId = req.user.id;
+    if (!mongoose.Types.ObjectId.isValid(hostId)) {
+      return next(new AppError('Invalid host id', 400));
+    }
     const listings = await Listing.find({
       hostId,
       status: { $in: ['active', 'inactive'] },
     }).select('_id title location blockedDates availability');
 
-    const blockingStatuses = ['pending', 'confirmed', 'in_progress'];
+    const blockingStatuses = ['pending', 'confirmed', 'in_progress', 'awaiting_arrival_confirmation'];
     const bookings = await Booking.find({
       hostId,
       status: { $in: blockingStatuses },
@@ -429,6 +520,9 @@ exports.getHostCalendar = async (req, res, next) => {
 exports.getHostAnalytics = async (req, res, next) => {
   try {
     const hostId = req.user.id;
+    if (!mongoose.Types.ObjectId.isValid(hostId)) {
+      return next(new AppError('Invalid host id', 400));
+    }
     const rangeDays = parseInt(req.query.range, 10) || 30;
     const now = new Date();
     const rangeStart = new Date(now);
@@ -444,12 +538,12 @@ exports.getHostAnalytics = async (req, res, next) => {
     const totalBookings = bookings.length;
     const upcomingBookings = bookings.filter((booking) => {
       const checkIn = new Date(booking.checkInDate);
-      return checkIn >= now && ['pending', 'confirmed', 'in_progress'].includes(booking.status);
+      return checkIn >= now && ['pending', 'confirmed', 'in_progress', 'awaiting_arrival_confirmation'].includes(booking.status);
     }).length;
     const completedBookings = bookings.filter((booking) => booking.status === 'completed').length;
     const cancelledBookings = bookings.filter((booking) => String(booking.status).startsWith('cancelled')).length;
 
-    const completedOrConfirmed = bookings.filter((booking) => ['completed', 'confirmed'].includes(booking.status));
+    const completedOrConfirmed = bookings.filter((booking) => ['completed', 'confirmed', 'awaiting_arrival_confirmation'].includes(booking.status));
     const totalRevenue = completedOrConfirmed.reduce((sum, booking) => (
       sum + (booking.pricing?.total || 0)
     ), 0);
@@ -474,7 +568,7 @@ exports.getHostAnalytics = async (req, res, next) => {
     ), 0);
 
     const rangeNightsBooked = rangeBookings
-      .filter((booking) => ['completed', 'confirmed', 'in_progress'].includes(booking.status))
+      .filter((booking) => ['completed', 'confirmed', 'in_progress', 'awaiting_arrival_confirmation'].includes(booking.status))
       .reduce((sum, booking) => sum + calcNights(booking.checkInDate, booking.checkOutDate), 0);
 
     const occupancyRate = listingsCount > 0 && rangeDays > 0
@@ -504,7 +598,7 @@ exports.getHostAnalytics = async (req, res, next) => {
       }
 
       topListingsMap[listingId].bookings += 1;
-      if (['completed', 'confirmed'].includes(booking.status)) {
+      if (['completed', 'confirmed', 'awaiting_arrival_confirmation'].includes(booking.status)) {
         topListingsMap[listingId].revenue += booking.pricing?.total || 0;
       }
     });
@@ -592,8 +686,13 @@ exports.cancelBooking = async (req, res, next) => {
     booking.cancellation = {
       cancelledBy: req.user.id,
       cancelledAt: Date.now(),
-      reason: req.body.reason,
+      reason: req.body.reason || (isGuest ? 'Cancelled by guest' : 'Cancelled by host'),
     };
+
+    if (booking.payout && booking.payout.status !== 'completed') {
+      booking.payout.status = 'cancelled';
+      booking.payout.failureReason = 'Booking cancelled before payout release';
+    }
 
     await booking.save();
 
@@ -626,7 +725,7 @@ exports.getUpcomingBookings = async (req, res, next) => {
     const bookings = await Booking.find({
       $or: [{ guestId: req.user.id }, { hostId: req.user.id }],
       checkInDate: { $gte: now },
-      status: { $in: ['confirmed', 'pending'] },
+      status: { $in: ['confirmed', 'pending', 'awaiting_arrival_confirmation', 'in_progress'] },
     })
       .populate('listingId')
       .sort({ checkInDate: 1 });

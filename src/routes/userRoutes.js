@@ -47,6 +47,95 @@ router.put('/profile', async (req, res, next) => {
   }
 });
 
+// @desc    Get host payout settings
+// @route   GET /api/v1/users/payout-settings
+// @access  Private (Host)
+router.get('/payout-settings', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'host') {
+      return next(new AppError('Only hosts can access payout settings', 403));
+    }
+
+    const user = await User.findById(req.user.id).select('payoutSettings hostStatus');
+
+    res.status(200).json({
+      success: true,
+      data: user?.payoutSettings || {},
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @desc    Update host payout settings
+// @route   PUT /api/v1/users/payout-settings
+// @access  Private (Host)
+router.put('/payout-settings', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'host') {
+      return next(new AppError('Only hosts can update payout settings', 403));
+    }
+
+    if (req.user.hostStatus !== 'approved') {
+      return next(new AppError('Host must be approved before adding payout details', 403));
+    }
+
+    const { method, bankAccount = {}, mobileMoney = {}, preferredCurrency = 'TZS' } = req.body;
+
+    if (!['bank_account', 'mobile_money'].includes(method)) {
+      return next(new AppError('Invalid payout method', 400));
+    }
+
+    const payoutSettings = {
+      method,
+      preferredCurrency,
+      isSetupComplete: true,
+      verified: req.user.payoutSettings?.verified || false,
+      lastUpdatedAt: new Date(),
+    };
+
+    if (method === 'bank_account') {
+      const requiredFields = ['accountName', 'accountNumber', 'bankName'];
+      const missing = requiredFields.filter((field) => !bankAccount[field]);
+      if (missing.length) {
+        return next(new AppError(`Missing bank account fields: ${missing.join(', ')}`, 400));
+      }
+      payoutSettings.bankAccount = {
+        accountName: bankAccount.accountName,
+        accountNumber: bankAccount.accountNumber,
+        bankName: bankAccount.bankName,
+        branchName: bankAccount.branchName,
+        swiftCode: bankAccount.swiftCode,
+      };
+    } else {
+      if (!mobileMoney.phoneNumber || !mobileMoney.provider) {
+        return next(new AppError('Mobile money provider and phone number are required', 400));
+      }
+      payoutSettings.mobileMoney = {
+        accountName: mobileMoney.accountName,
+        phoneNumber: mobileMoney.phoneNumber,
+        provider: mobileMoney.provider,
+      };
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { payoutSettings },
+      { new: true, runValidators: true },
+    ).select('payoutSettings');
+
+    req.user.payoutSettings = updatedUser.payoutSettings;
+
+    res.status(200).json({
+      success: true,
+      data: updatedUser.payoutSettings,
+      message: 'Payout settings saved successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // @desc    Update user role (admin only)
 // @route   PUT /api/v1/users/update-role
 // @access  Private

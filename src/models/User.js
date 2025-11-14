@@ -36,6 +36,40 @@ const UserSchema = new mongoose.Schema({
     enum: ['not_requested', 'pending', 'approved', 'rejected'],
     default: 'not_requested',
   },
+  payoutSettings: {
+    method: {
+      type: String,
+      enum: ['bank_account', 'mobile_money'],
+    },
+    bankAccount: {
+      accountName: String,
+      accountNumber: String,
+      bankName: String,
+      branchName: String,
+      swiftCode: String,
+    },
+    mobileMoney: {
+      provider: {
+        type: String,
+        enum: ['mpesa', 'tigopesa', 'airtel_money', 'halopesa', 't-pesa', 'other'],
+      },
+      phoneNumber: String,
+      accountName: String,
+    },
+    preferredCurrency: {
+      type: String,
+      default: 'TZS',
+    },
+    isSetupComplete: {
+      type: Boolean,
+      default: false,
+    },
+    verified: {
+      type: Boolean,
+      default: false,
+    },
+    lastUpdatedAt: Date,
+  },
   profile: {
     firstName: {
       type: String,

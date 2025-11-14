@@ -1,6 +1,7 @@
 const app = require('./app');
 const connectDB = require('./config/database');
 const logger = require('./utils/logger');
+const { startPayoutWatcher } = require('./services/payoutService');
 
 // Load environment variables
 require('dotenv').config();
@@ -8,7 +9,9 @@ require('dotenv').config();
 const PORT = process.env.PORT || 3000;
 
 // Connect to MongoDB
-connectDB();
+connectDB().then(() => {
+  startPayoutWatcher();
+});
 
 // Start server
 // Listen on 0.0.0.0 to accept connections from network (not just localhost)

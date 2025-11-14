@@ -371,7 +371,7 @@ exports.blockListingDates = async (req, res, next) => {
     }
 
     const Booking = require('../models/Booking');
-    const blockingStatuses = ['pending', 'confirmed', 'in_progress'];
+    const blockingStatuses = ['pending', 'confirmed', 'in_progress', 'awaiting_arrival_confirmation'];
     const overlappingBooking = await Booking.findOne({
       listingId: listing._id,
       status: { $in: blockingStatuses },

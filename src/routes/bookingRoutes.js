@@ -9,8 +9,11 @@ const {
   getUpcomingBookings,
   getPastBookings,
   downloadReceipt,
+  getHostCalendar,
+  getHostAnalytics,
+  confirmArrival,
 } = require('../controllers/bookingController');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -98,6 +101,8 @@ router.route('/')
 
 router.get('/upcoming', getUpcomingBookings);
 router.get('/past', getPastBookings);
+router.get('/host/calendar', authorize('host', 'admin'), getHostCalendar);
+router.get('/host/analytics', authorize('host', 'admin'), getHostAnalytics);
 
 router.get('/:id/receipt', downloadReceipt);
 
@@ -105,6 +110,7 @@ router.route('/:id')
   .get(getBooking);
 
 router.put('/:id/confirm', confirmBooking);
+router.put('/:id/confirm-arrival', confirmArrival);
 router.put('/:id/cancel', cancelBooking);
 
 module.exports = router;
