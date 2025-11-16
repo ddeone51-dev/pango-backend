@@ -20,6 +20,7 @@ import '../../features/host/host_calendar_screen.dart';
 import '../../features/host/host_analytics_screen.dart';
 import '../../features/host/host_payout_settings_screen.dart';
 import '../../features/notifications/notification_settings_screen.dart';
+import '../../features/profile/privacy_security_screen.dart';
 
 class Routes {
   static const String splash = '/';
@@ -43,6 +44,7 @@ class Routes {
   static const String hostAnalytics = '/host-analytics';
   static const String hostPayoutSettings = '/host-payout-settings';
   static const String notificationSettings = '/notification-settings';
+  static const String privacySecurity = '/privacy-security';
   
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -134,6 +136,9 @@ class Routes {
       
       case notificationSettings:
         return MaterialPageRoute(builder: (_) => const NotificationSettingsScreen());
+      
+      case privacySecurity:
+        return MaterialPageRoute(builder: (_) => const PrivacySecurityScreen());
       
       default:
         return MaterialPageRoute(

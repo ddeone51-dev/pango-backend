@@ -124,7 +124,9 @@ class ProfileScreen extends StatelessWidget {
             context,
             icon: Icons.lock_outline,
             title: 'Privacy & Security',
-            onTap: () {},
+            onTap: () {
+              Navigator.of(context).pushNamed(Routes.privacySecurity);
+            },
           ),
 
           const SizedBox(height: 20),
