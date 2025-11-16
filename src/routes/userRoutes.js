@@ -57,10 +57,34 @@ router.get('/payout-settings', async (req, res, next) => {
     }
 
     const user = await User.findById(req.user.id).select('payoutSettings hostStatus');
+    const payoutSettings = user?.payoutSettings || {};
+    
+    // Calculate cooldown information
+    let canUpdate = true;
+    let daysUntilNextUpdate = 0;
+    let nextUpdateDate = null;
+    
+    if (payoutSettings.lastUpdatedAt) {
+      const lastUpdate = new Date(payoutSettings.lastUpdatedAt);
+      const now = new Date();
+      const daysSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60 * 24);
+      const cooldownDays = 2;
+      
+      if (daysSinceUpdate < cooldownDays) {
+        canUpdate = false;
+        daysUntilNextUpdate = (cooldownDays - daysSinceUpdate).toFixed(1);
+        nextUpdateDate = new Date(lastUpdate.getTime() + (cooldownDays * 24 * 60 * 60 * 1000));
+      }
+    }
 
     res.status(200).json({
       success: true,
-      data: user?.payoutSettings || {},
+      data: {
+        ...payoutSettings,
+        canUpdate,
+        daysUntilNextUpdate: canUpdate ? 0 : parseFloat(daysUntilNextUpdate),
+        nextUpdateDate: nextUpdateDate ? nextUpdateDate.toISOString() : null,
+      },
     });
   } catch (error) {
     next(error);
@@ -80,6 +104,23 @@ router.put('/payout-settings', async (req, res, next) => {
       return next(new AppError('Host must be approved before adding payout details', 403));
     }
 
+    // Check 2-day cooldown period for security
+    const existingPayout = req.user.payoutSettings;
+    if (existingPayout?.lastUpdatedAt) {
+      const lastUpdate = new Date(existingPayout.lastUpdatedAt);
+      const now = new Date();
+      const daysSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60 * 24);
+      const cooldownDays = 2;
+      
+      if (daysSinceUpdate < cooldownDays) {
+        const remainingDays = (cooldownDays - daysSinceUpdate).toFixed(1);
+        return next(new AppError(
+          `Payout settings can only be updated once every ${cooldownDays} days for security reasons. Please wait ${remainingDays} more day(s) before updating again.`,
+          400
+        ));
+      }
+    }
+
     const { method, bankAccount, mobileMoney, preferredCurrency = 'TZS' } = req.body;
 
     if (!method || !['bank_account', 'mobile_money'].includes(method)) {
@@ -90,7 +131,7 @@ router.put('/payout-settings', async (req, res, next) => {
       method,
       preferredCurrency,
       isSetupComplete: true,
-      verified: req.user.payoutSettings?.verified || false,
+      verified: false, // Reset verification when payout details are updated
       lastUpdatedAt: new Date(),
     };
 
