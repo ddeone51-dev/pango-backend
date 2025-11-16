@@ -138,9 +138,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
                   icon: Icons.email_outlined,
                   title: 'Email Verification',
                   isVerified: user?.isEmailVerified ?? false,
-                  onTap: user?.isEmailVerified == false
-                      ? () => _showVerificationDialog(context, 'email')
-                      : null,
+                  onTap: null, // Only admins can verify
                 ),
                 const Divider(),
                 _buildVerificationItem(
@@ -148,9 +146,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
                   icon: Icons.phone_outlined,
                   title: 'Phone Verification',
                   isVerified: user?.isPhoneVerified ?? false,
-                  onTap: user?.isPhoneVerified == false
-                      ? () => _showVerificationDialog(context, 'phone')
-                      : null,
+                  onTap: null, // Only admins can verify
                 ),
               ],
             ),
