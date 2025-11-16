@@ -1311,7 +1311,19 @@ exports.getHostPayoutSettings = async (req, res, next) => {
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
 
     // Build query to find hosts with payout settings
-    const query = { role: 'host' };
+    // Show all hosts regardless of approval status, but only those with payout settings
+    const query = { 
+      role: 'host',
+      'payoutSettings.isSetupComplete': true
+    };
+    
+    // Ensure payout method exists and optionally filter by specific method
+    if (method) {
+      query['payoutSettings.method'] = method;
+    } else {
+      query['payoutSettings.method'] = { $exists: true, $ne: null };
+    }
+    
     if (search) {
       query.$or = [
         { 'profile.firstName': new RegExp(search, 'i') },
@@ -1321,10 +1333,7 @@ exports.getHostPayoutSettings = async (req, res, next) => {
       ];
     }
 
-    if (method) {
-      query['payoutSettings.method'] = method;
-    }
-
+    // Filter by verification status if specified
     if (verified !== undefined) {
       query['payoutSettings.verified'] = verified === 'true';
     }
