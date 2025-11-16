@@ -18,7 +18,13 @@ class _AddListingScreenState extends State<AddListingScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.translate('add_listing')),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+        title: Text(
+          l10n.translate('add_listing'),
+          style: const TextStyle(color: Colors.black),
+        ),
       ),
       body: Stepper(
         currentStep: _currentStep,
@@ -37,50 +43,50 @@ class _AddListingScreenState extends State<AddListingScreen> {
         },
         steps: [
           Step(
-            title: const Text('Property Type'),
+            title: Text(l10n.translate('property_type')),
             content: Column(
               children: [
-                const Text('What type of property are you listing?'),
+                Text(l10n.translate('what_type_property')),
                 // Property type selection
               ],
             ),
             isActive: _currentStep >= 0,
           ),
           Step(
-            title: const Text('Location'),
+            title: Text(l10n.translate('location')),
             content: Column(
               children: [
-                const Text('Where is your property located?'),
+                Text(l10n.translate('where_property_located')),
                 // Location fields
               ],
             ),
             isActive: _currentStep >= 1,
           ),
           Step(
-            title: const Text('Details'),
+            title: Text(l10n.translate('details')),
             content: Column(
               children: [
-                const Text('Tell us about your property'),
+                Text(l10n.translate('tell_about_property')),
                 // Details fields
               ],
             ),
             isActive: _currentStep >= 2,
           ),
           Step(
-            title: const Text('Photos'),
+            title: Text(l10n.translate('photos')),
             content: Column(
               children: [
-                const Text('Add photos of your property'),
+                Text(l10n.translate('add_photos')),
                 // Photo upload
               ],
             ),
             isActive: _currentStep >= 3,
           ),
           Step(
-            title: const Text('Pricing'),
+            title: Text(l10n.translate('pricing')),
             content: Column(
               children: [
-                const Text('Set your price'),
+                Text(l10n.translate('set_price')),
                 // Pricing fields
               ],
             ),
