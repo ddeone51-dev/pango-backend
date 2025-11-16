@@ -26,7 +26,13 @@ class HostPayoutProvider with ChangeNotifier {
       final response = await apiService.get('/users/payout-settings');
       if (response.data['success'] == true) {
         final data = response.data['data'] as Map<String, dynamic>? ?? {};
-        _settings = data.isEmpty ? null : PayoutSettings.fromJson(data);
+        // Only create settings object if method exists (actual payout settings)
+        // If only cooldown info is present (canUpdate, daysUntilNextUpdate), treat as null
+        if (data.isEmpty || data['method'] == null || data['method'].toString().isEmpty) {
+          _settings = null;
+        } else {
+          _settings = PayoutSettings.fromJson(data);
+        }
       } else {
         _error = response.data['message']?.toString();
       }

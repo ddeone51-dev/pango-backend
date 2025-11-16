@@ -329,14 +329,19 @@ class _HostPayoutSettingsScreenState extends State<HostPayoutSettingsScreen> {
     // Allow saving if settings are null (first time setup)
     if (provider.settings == null) return true;
     
+    final settings = provider.settings!;
+    
+    // Allow saving if setup is not complete (first time setup)
+    if (settings.isSetupComplete == false) return true;
+    
     // Allow saving if method is null or empty (first time setup)
-    if (provider.settings!.method == null || provider.settings!.method!.isEmpty) {
+    if (settings.method == null || settings.method!.isEmpty) {
       return true;
     }
     
-    // If settings exist and method exists, check canUpdate flag
+    // If method exists and setup is complete, check canUpdate flag
     // Only disable if canUpdate is explicitly false (cooldown active)
-    return provider.settings!.canUpdate;
+    return settings.canUpdate;
   }
 
   Future<void> _handleSave(HostPayoutProvider provider) async {
