@@ -1,0 +1,15 @@
+# Example key.properties file
+# Copy this to key.properties and fill in your actual values
+# 
+# IMPORTANT: Never commit key.properties to git!
+# Add it to .gitignore
+
+storePassword=Pang@12345
+keyPassword=Pang@12345
+keyAlias=upload
+storeFile=C:/homia/upload-keystore.jks
+
+# To generate keystore, run:
+# keytool -genkey -v -keystore C:\homia\upload-keystore.jks -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+
+

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1057753978859",
+    "project_id": "pango-ca459",
+    "storage_bucket": "pango-ca459.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1057753978859:android:bbea9c61efb9d1734c6bae",
+        "android_client_info": {
+          "package_name": "com.techlandtz.homia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6L3xJEkQdE-lr6retR59f4xebLeaUTbU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
