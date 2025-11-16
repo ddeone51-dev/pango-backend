@@ -197,7 +197,14 @@ function handleNavigation(e) {
     
     // Update active page
     document.querySelectorAll('.page-content').forEach(content => content.classList.remove('active'));
-    document.getElementById(`${page}Page`).classList.add('active');
+    // Convert page name to camelCase for page ID (e.g., payout-settings -> payoutSettings)
+    const pageId = page.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+    const pageElement = document.getElementById(`${pageId}Page`);
+    if (pageElement) {
+        pageElement.classList.add('active');
+    } else {
+        console.error(`Page element not found: ${pageId}Page`);
+    }
     
     // Update page title
     const pageTitle = e.currentTarget.querySelector('span').textContent;
