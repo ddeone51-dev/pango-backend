@@ -1411,6 +1411,49 @@ exports.getHostPayoutSettings = async (req, res, next) => {
   }
 };
 
+// @desc    Update host payout verification status
+// @route   PUT /api/v1/admin/hosts/:id/payout-verify
+// @access  Admin
+exports.updatePayoutVerification = async (req, res, next) => {
+  try {
+    const { verified } = req.body;
+    const hostId = req.params.id;
+
+    if (typeof verified !== 'boolean') {
+      return next(new AppError('Verified status must be a boolean', 400));
+    }
+
+    const user = await User.findById(hostId);
+
+    if (!user || user.role !== 'host') {
+      return next(new AppError('Host not found', 404));
+    }
+
+    if (!user.payoutSettings || !user.payoutSettings.method) {
+      return next(new AppError('Host has no payout settings to verify', 400));
+    }
+
+    // Update verification status
+    user.payoutSettings.verified = verified;
+    if (verified) {
+      user.payoutSettings.lastUpdatedAt = new Date();
+    }
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`Admin ${verified ? 'verified' : 'unverified'} payout settings for host: ${user.email}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        verified: user.payoutSettings.verified,
+        message: `Payout settings ${verified ? 'verified' : 'unverified'} successfully`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 

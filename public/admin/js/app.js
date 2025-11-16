@@ -901,7 +901,7 @@ async function viewPayoutDetails(hostId) {
                         </div>
                         <div class="detail-item">
                             <label>Verified:</label>
-                            <span class="badge ${payout.verified ? 'badge-success' : 'badge-danger'}">
+                            <span id="verificationStatus" class="badge ${payout.verified ? 'badge-success' : 'badge-danger'}">
                                 ${payout.verified ? '✓ Yes' : '✗ No'}
                             </span>
                         </div>
@@ -916,12 +916,65 @@ async function viewPayoutDetails(hostId) {
                     </div>
                 </div>
             </div>
+            <div class="modal-actions" style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-end;">
+                ${payout.verified ? 
+                    `<button class="btn btn-danger" onclick="updatePayoutVerification('${hostId}', false)">
+                        <i class="fas fa-times"></i> Unverify
+                    </button>` :
+                    `<button class="btn btn-success" onclick="updatePayoutVerification('${hostId}', true)">
+                        <i class="fas fa-check"></i> Verify Payout Details
+                    </button>`
+                }
+            </div>
         `;
         
         content.innerHTML = detailsHTML;
     } catch (error) {
         console.error('Error loading payout details:', error);
         content.innerHTML = `<p class="error-message">Error loading payout details: ${error.message || 'Unknown error'}</p>`;
+    }
+}
+
+async function updatePayoutVerification(hostId, verified) {
+    if (!confirm(`Are you sure you want to ${verified ? 'verify' : 'unverify'} this host's payout details?`)) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        const response = await apiCall(`/admin/hosts/${hostId}/payout-verify`, {
+            method: 'PUT',
+            body: JSON.stringify({ verified })
+        });
+        
+        hideLoading();
+        showToast(response.data?.message || `Payout settings ${verified ? 'verified' : 'unverified'} successfully`, 'success');
+        
+        // Update the verification status in the modal
+        const statusElement = document.getElementById('verificationStatus');
+        if (statusElement) {
+            statusElement.className = `badge ${verified ? 'badge-success' : 'badge-danger'}`;
+            statusElement.textContent = verified ? '✓ Yes' : '✗ No';
+        }
+        
+        // Update the button
+        const modalActions = document.querySelector('.modal-actions');
+        if (modalActions) {
+            modalActions.innerHTML = verified ? 
+                `<button class="btn btn-danger" onclick="updatePayoutVerification('${hostId}', false)">
+                    <i class="fas fa-times"></i> Unverify
+                </button>` :
+                `<button class="btn btn-success" onclick="updatePayoutVerification('${hostId}', true)">
+                    <i class="fas fa-check"></i> Verify Payout Details
+                </button>`;
+        }
+        
+        // Refresh the payout settings list
+        loadPayoutSettings();
+    } catch (error) {
+        hideLoading();
+        console.error('Error updating verification:', error);
+        showToast(error.message || 'Failed to update verification status', 'error');
     }
 }
 
