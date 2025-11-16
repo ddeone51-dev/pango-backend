@@ -611,7 +611,7 @@ exports.getHostAnalytics = async (req, res, next) => {
     const trendAggregation = await Booking.aggregate([
       {
         $match: {
-          hostId: mongoose.Types.ObjectId(hostId),
+          hostId: new mongoose.Types.ObjectId(hostId),
           createdAt: { $gte: sixMonthsAgo },
         },
       },

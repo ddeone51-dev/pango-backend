@@ -610,8 +610,10 @@ exports.getUser = async (req, res, next) => {
 
     // Get user's listings if host
     let listings = [];
+    let payoutSettings = null;
     if (user.role === 'host') {
       listings = await Listing.find({ hostId: user._id });
+      payoutSettings = user.payoutSettings || null;
     }
 
     // Get user's bookings
@@ -626,6 +628,7 @@ exports.getUser = async (req, res, next) => {
       data: {
         user,
         listings,
+        payoutSettings, // Include payout settings for hosts
         bookings: bookings.map((booking) => {
           const plain = booking.toObject();
           return {
@@ -1291,7 +1294,94 @@ exports.generateReports = async (req, res, next) => {
   }
 };
 
+// @desc    Get all host payout settings
+// @route   GET /api/v1/admin/hosts/payout-settings
+// @access  Admin
+exports.getHostPayoutSettings = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      method,
+      verified,
+    } = req.query;
 
+    const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+
+    // Build query to find hosts with payout settings
+    const query = { role: 'host' };
+    if (search) {
+      query.$or = [
+        { 'profile.firstName': new RegExp(search, 'i') },
+        { 'profile.lastName': new RegExp(search, 'i') },
+        { email: new RegExp(search, 'i') },
+        { phoneNumber: new RegExp(search, 'i') },
+      ];
+    }
+
+    if (method) {
+      query['payoutSettings.method'] = method;
+    }
+
+    if (verified !== undefined) {
+      query['payoutSettings.verified'] = verified === 'true';
+    }
+
+    // Get total count
+    const total = await User.countDocuments(query);
+    const pages = Math.ceil(total / limitNum) || 1;
+    const startIndex = (pageNum - 1) * limitNum;
+
+    // Fetch hosts with payout settings
+    const hosts = await User.find(query)
+      .select('email phoneNumber profile payoutSettings hostStatus createdAt')
+      .sort('-createdAt')
+      .skip(startIndex)
+      .limit(limitNum);
+
+    const data = hosts.map((host) => ({
+      id: host._id,
+      email: host.email,
+      phoneNumber: host.phoneNumber,
+      name: `${host.profile?.firstName || ''} ${host.profile?.lastName || ''}`.trim(),
+      hostStatus: host.hostStatus,
+      payoutSettings: {
+        method: host.payoutSettings?.method || 'not_set',
+        isSetupComplete: host.payoutSettings?.isSetupComplete || false,
+        verified: host.payoutSettings?.verified || false,
+        lastUpdatedAt: host.payoutSettings?.lastUpdatedAt,
+        bankAccount: host.payoutSettings?.method === 'bank_account' ? {
+          accountName: host.payoutSettings?.bankAccount?.accountName,
+          accountNumber: host.payoutSettings?.bankAccount?.accountNumber ? `***${host.payoutSettings.bankAccount.accountNumber.slice(-4)}` : 'N/A',
+          bankName: host.payoutSettings?.bankAccount?.bankName,
+        } : null,
+        mobileMoney: host.payoutSettings?.method === 'mobile_money' ? {
+          provider: host.payoutSettings?.mobileMoney?.provider,
+          phoneNumber: host.payoutSettings?.mobileMoney?.phoneNumber ? `${host.payoutSettings.mobileMoney.phoneNumber.slice(0, -4)}****` : 'N/A',
+          accountName: host.payoutSettings?.mobileMoney?.accountName,
+        } : null,
+      },
+      joinedAt: host.createdAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        hosts: data,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 

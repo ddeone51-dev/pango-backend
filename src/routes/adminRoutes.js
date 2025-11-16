@@ -17,6 +17,7 @@ const {
   exportPaymentTransactionsPdf,
   getHostRequests,
   updateHostStatus,
+  getHostPayoutSettings,
 } = require('../controllers/adminController');
 const { sendBroadcastNotification } = require('../controllers/pushNotificationController');
 const { protectAdmin } = require('../middleware/adminAuth');
@@ -42,6 +43,7 @@ router.put('/listings/:id/status', updateListingStatus);
 router.delete('/listings/:id', deleteListing);
 
 // Host management routes
+router.get('/hosts/payout-settings', getHostPayoutSettings);
 router.get('/hosts', getHostRequests);
 router.put('/hosts/:id/status', updateHostStatus);
 

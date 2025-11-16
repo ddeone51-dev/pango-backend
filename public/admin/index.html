@@ -62,6 +62,10 @@
                     <i class="fas fa-user-check"></i>
                     <span>Hosts</span>
                 </a>
+                <a href="#payout-settings" class="nav-link" data-page="payout-settings">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Host Payouts</span>
+                </a>
                 <a href="#listings" class="nav-link" data-page="listings">
                     <i class="fas fa-building"></i>
                     <span>Properties</span>
@@ -337,6 +341,92 @@
                         </table>
                     </div>
                     <div id="hostsPagination" class="pagination"></div>
+                </div>
+
+                <!-- Host Payout Settings Page -->
+                <div id="payoutSettingsPage" class="page-content">
+                    <div class="page-header">
+                        <div class="page-header-left">
+                            <h2>Host Payout Settings</h2>
+                            <p>View and manage host payment information</p>
+                        </div>
+                        <div class="page-header-right">
+                            <input type="text" id="payoutSearch" class="search-input" placeholder="Search by name, email, phone...">
+                            <select id="payoutMethodFilter" class="filter-select">
+                                <option value="">All Methods</option>
+                                <option value="bank_account">Bank Account</option>
+                                <option value="mobile_money">Mobile Money</option>
+                            </select>
+                            <select id="payoutVerifiedFilter" class="filter-select">
+                                <option value="">All Status</option>
+                                <option value="true">Verified</option>
+                                <option value="false">Unverified</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Payout Stats -->
+                    <div class="stats-grid" style="margin-bottom: 24px;">
+                        <div class="stat-card">
+                            <div class="stat-icon blue">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="totalHostsWithPayout">0</span>
+                                <span class="stat-label">Hosts with Payout Info</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green">
+                                <i class="fas fa-university"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="bankAccountCount">0</span>
+                                <span class="stat-label">Bank Accounts</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon orange">
+                                <i class="fas fa-mobile-alt"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="mobileMoneyCount">0</span>
+                                <span class="stat-label">Mobile Money</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon purple">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="stat-details">
+                                <span class="stat-value" id="verifiedCount">0</span>
+                                <span class="stat-label">Verified</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Host Name</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Method</th>
+                                    <th>Account Info</th>
+                                    <th>Verified</th>
+                                    <th>Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payoutSettingsTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="payoutSettingsPagination" class="pagination"></div>
                 </div>
 
                 <!-- Listings Page -->

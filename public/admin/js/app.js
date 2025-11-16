@@ -214,6 +214,9 @@ function handleNavigation(e) {
         case 'hosts':
             loadHosts();
             break;
+        case 'payout-settings':
+            loadPayoutSettings();
+            break;
         case 'listings':
             loadListings();
             break;
@@ -676,6 +679,105 @@ document.getElementById('hostSearch')?.addEventListener('keypress', (e) => {
         loadHosts(1);
     }
 });
+
+// ==================================
+// Host Payout Settings Management
+// ==================================
+
+async function loadPayoutSettings(page = 1) {
+    try {
+        showLoading();
+
+        const search = document.getElementById('payoutSearch')?.value?.trim() || '';
+        const method = document.getElementById('payoutMethodFilter')?.value || '';
+        const verified = document.getElementById('payoutVerifiedFilter')?.value || '';
+
+        const queryParams = new URLSearchParams({
+            page,
+            limit: 20,
+            ...(search && { search }),
+            ...(method && { method }),
+            ...(verified && { verified }),
+        });
+
+        const response = await apiCall(`/admin/hosts/payout-settings?${queryParams}`);
+        const hosts = response.data?.hosts || [];
+        
+        displayPayoutSettings(hosts);
+        updatePayoutStats(response.data?.hosts || []);
+
+        if (response.data?.pagination) {
+            updatePagination('payoutSettingsPagination', response.data.pagination.page, response.data.pagination.pages, loadPayoutSettings);
+        }
+
+        hideLoading();
+    } catch (error) {
+        hideLoading();
+        console.error(error);
+        showToast(error.message || 'Failed to load payout settings', 'error');
+    }
+}
+
+function displayPayoutSettings(hosts) {
+    const tbody = document.getElementById('payoutSettingsTableBody');
+
+    if (!tbody) return;
+
+    if (!hosts || hosts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No payout information found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = hosts.map((host) => {
+        const payout = host.payoutSettings || {};
+        const method = payout.method === 'bank_account' ? '🏦 Bank' : payout.method === 'mobile_money' ? '📱 Mobile' : '—';
+        const accountInfo = payout.bankAccount ? 
+            `${payout.bankAccount.bankName} ${payout.bankAccount.accountNumber}` : 
+            payout.mobileMoney ? 
+            `${payout.mobileMoney.provider} ${payout.mobileMoney.phoneNumber}` :
+            'Not set';
+        const verified = payout.verified ? '<span class="badge badge-success">✓ Yes</span>' : '<span class="badge badge-danger">✗ No</span>';
+        const updated = payout.lastUpdatedAt ? formatDate(payout.lastUpdatedAt) : '—';
+
+        return `
+            <tr>
+                <td><strong>${host.name}</strong></td>
+                <td>${host.email}</td>
+                <td>${host.phoneNumber || 'N/A'}</td>
+                <td>${method}</td>
+                <td><code>${accountInfo}</code></td>
+                <td>${verified}</td>
+                <td>${updated}</td>
+                <td>
+                    <button class="btn-icon" onclick="viewPayoutDetails('${host.id}')" title="View">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updatePayoutStats(hosts) {
+    let totalHosts = hosts.length;
+    let bankCount = hosts.filter(h => h.payoutSettings?.method === 'bank_account').length;
+    let mobileCount = hosts.filter(h => h.payoutSettings?.method === 'mobile_money').length;
+    let verifiedCount = hosts.filter(h => h.payoutSettings?.verified).length;
+
+    document.getElementById('totalHostsWithPayout').textContent = totalHosts;
+    document.getElementById('bankAccountCount').textContent = bankCount;
+    document.getElementById('mobileMoneyCount').textContent = mobileCount;
+    document.getElementById('verifiedCount').textContent = verifiedCount;
+}
+
+function viewPayoutDetails(hostId) {
+    alert(`View details for host: ${hostId}\n\nFull payout information would display here.`);
+}
+
+// Setup event listeners for payout settings
+document.getElementById('payoutSearch')?.addEventListener('input', () => loadPayoutSettings(1));
+document.getElementById('payoutMethodFilter')?.addEventListener('change', () => loadPayoutSettings(1));
+document.getElementById('payoutVerifiedFilter')?.addEventListener('change', () => loadPayoutSettings(1));
 
 // ==================================
 // Listings Management
