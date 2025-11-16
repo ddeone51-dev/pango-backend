@@ -453,7 +453,7 @@ function displayUsers(users) {
     const tbody = document.getElementById('usersTableBody');
     
     if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No users found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No users found</td></tr>';
         return;
     }
     
@@ -464,12 +464,32 @@ function displayUsers(users) {
             <td>${user.email}</td>
             <td>${user.phoneNumber || 'N/A'}</td>
             <td><span class="badge badge-info">${user.role}</span></td>
+            <td>
+                ${user.isEmailVerified 
+                    ? '<span class="badge badge-success"><i class="fas fa-check"></i> Verified</span>' 
+                    : '<span class="badge badge-danger"><i class="fas fa-times"></i> Not Verified</span>'}
+            </td>
+            <td>
+                ${user.isPhoneVerified 
+                    ? '<span class="badge badge-success"><i class="fas fa-check"></i> Verified</span>' 
+                    : '<span class="badge badge-danger"><i class="fas fa-times"></i> Not Verified</span>'}
+            </td>
             <td><span class="badge ${user.accountStatus === 'active' ? 'badge-success' : 'badge-danger'}">${user.accountStatus || 'active'}</span></td>
             <td>${formatDate(user.createdAt)}</td>
             <td>
                 <div class="action-buttons">
                     <button class="btn-icon" onclick="viewUser('${user._id}')" title="View">
                         <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn-icon ${user.isEmailVerified ? 'text-success' : 'text-danger'}" 
+                            onclick="toggleEmailVerification('${user._id}', ${!user.isEmailVerified})" 
+                            title="${user.isEmailVerified ? 'Unverify Email' : 'Verify Email'}">
+                        <i class="fas fa-${user.isEmailVerified ? 'check-circle' : 'times-circle'}"></i>
+                    </button>
+                    <button class="btn-icon ${user.isPhoneVerified ? 'text-success' : 'text-danger'}" 
+                            onclick="togglePhoneVerification('${user._id}', ${!user.isPhoneVerified})" 
+                            title="${user.isPhoneVerified ? 'Unverify Phone' : 'Verify Phone'}">
+                        <i class="fas fa-${user.isPhoneVerified ? 'check-circle' : 'times-circle'}"></i>
                     </button>
                     <button class="btn-icon" onclick="editUser('${user._id}')" title="Edit">
                         <i class="fas fa-edit"></i>
@@ -530,6 +550,46 @@ async function deleteUser(userId) {
     } catch (error) {
         hideLoading();
         showToast('Failed to delete user', 'error');
+    }
+}
+
+async function toggleEmailVerification(userId, verified) {
+    if (!confirm(`Are you sure you want to ${verified ? 'verify' : 'unverify'} this user's email?`)) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        const response = await apiCall(`/admin/users/${userId}/verify-email`, {
+            method: 'PUT',
+            body: JSON.stringify({ verified })
+        });
+        hideLoading();
+        showToast(response.data?.message || `Email ${verified ? 'verified' : 'unverified'} successfully`, 'success');
+        loadUsers(currentUsersPage);
+    } catch (error) {
+        hideLoading();
+        showToast(error.message || 'Failed to update email verification', 'error');
+    }
+}
+
+async function togglePhoneVerification(userId, verified) {
+    if (!confirm(`Are you sure you want to ${verified ? 'verify' : 'unverify'} this user's phone?`)) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        const response = await apiCall(`/admin/users/${userId}/verify-phone`, {
+            method: 'PUT',
+            body: JSON.stringify({ verified })
+        });
+        hideLoading();
+        showToast(response.data?.message || `Phone ${verified ? 'verified' : 'unverified'} successfully`, 'success');
+        loadUsers(currentUsersPage);
+    } catch (error) {
+        hideLoading();
+        showToast(error.message || 'Failed to update phone verification', 'error');
     }
 }
 
