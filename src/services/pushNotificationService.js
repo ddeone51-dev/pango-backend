@@ -296,6 +296,76 @@ class PushNotificationService {
   }
 
   /**
+   * Send app update notification to all users
+   * @param {Object} updateInfo - Update information
+   */
+  async sendAppUpdateNotification(updateInfo) {
+    try {
+      const Notification = require('../models/Notification');
+      const users = await User.find({
+        accountStatus: 'active',
+      }).select('_id preferences');
+
+      const notifications = [];
+      const userIds = [];
+
+      for (const user of users) {
+        const language = user.preferences?.language || 'en';
+        
+        const notification = await Notification.create({
+          userId: user._id,
+          type: 'reminder',
+          title: {
+            en: updateInfo.title?.en || 'App Update Available',
+            sw: updateInfo.title?.sw || 'Sasisho la Programu Linapatikana',
+          },
+          message: {
+            en: updateInfo.message?.en || 'We have exciting new features and improvements!',
+            sw: updateInfo.message?.sw || 'Tuna vipengele vipya na maboresho ya kusisimua!',
+          },
+          data: {
+            screen: updateInfo.screen || 'Home',
+            ...updateInfo.data,
+          },
+        });
+
+        notifications.push(notification);
+        userIds.push(user._id.toString());
+      }
+
+      // Send push notifications to users who have it enabled
+      const pushEnabledUsers = await User.find({
+        _id: { $in: userIds },
+        'preferences.notifications.push': true,
+        deviceTokens: { $exists: true, $ne: [] },
+      }).select('_id deviceTokens preferences');
+
+      for (const user of pushEnabledUsers) {
+        const language = user.preferences?.language || 'en';
+        const userNotification = notifications.find(n => n.userId.toString() === user._id.toString());
+        
+        if (userNotification) {
+          await this.sendToUser(user._id.toString(), {
+            title: userNotification.title[language],
+            body: userNotification.message[language],
+            type: userNotification.type,
+            data: userNotification.data,
+          });
+        }
+      }
+
+      return {
+        success: true,
+        notificationsCreated: notifications.length,
+        pushNotificationsSent: pushEnabledUsers.length,
+      };
+    } catch (error) {
+      console.error('Error sending app update notification:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Broadcast notification to all users
    */
   async sendBroadcast(notification) {

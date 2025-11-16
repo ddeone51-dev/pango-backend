@@ -137,6 +137,20 @@ const UserSchema = new mongoose.Schema({
         default: false,
       },
     },
+    privacy: {
+      profileVisibility: {
+        type: Boolean,
+        default: true,
+      },
+      locationSharing: {
+        type: Boolean,
+        default: false,
+      },
+      analyticsTracking: {
+        type: Boolean,
+        default: true,
+      },
+    },
   },
   savedListings: [{
     type: mongoose.Schema.Types.ObjectId,
