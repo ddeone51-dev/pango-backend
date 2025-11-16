@@ -135,7 +135,7 @@ class PushNotificationService {
   /// Register FCM token with backend
   Future<void> _registerToken(String token) async {
     try {
-      await _apiService?.post('/notifications/register-token', data: {'token': token});
+      await _apiService?.post('/users/notifications/register-token', data: {'token': token});
       print('Token registered with backend');
     } catch (e) {
       print('Failed to register token: $e');
@@ -207,7 +207,7 @@ class PushNotificationService {
   Future<void> removeToken() async {
     try {
       if (_fcmToken != null && _apiService != null) {
-        await _apiService?.delete('/notifications/remove-token', data: {'token': _fcmToken});
+        await _apiService?.delete('/users/notifications/remove-token', data: {'token': _fcmToken});
       }
       _fcmToken = null;
     } catch (e) {
@@ -218,7 +218,7 @@ class PushNotificationService {
   /// Send test notification
   Future<bool> sendTestNotification() async {
     try {
-      final response = await _apiService?.post('/notifications/test');
+      final response = await _apiService?.post('/users/notifications/test');
       return response?.data['success'] == true;
     } catch (e) {
       print('Failed to send test notification: $e');
@@ -238,7 +238,7 @@ class PushNotificationService {
       if (email != null) data['email'] = email;
       if (sms != null) data['sms'] = sms;
 
-      final response = await _apiService?.put('/notifications/preferences', data: data);
+      final response = await _apiService?.put('/users/notifications/preferences', data: data);
       return response?.data['success'] == true;
     } catch (e) {
       print('Failed to update preferences: $e');
@@ -249,7 +249,7 @@ class PushNotificationService {
   /// Get notification preferences
   Future<Map<String, dynamic>?> getPreferences() async {
     try {
-      final response = await _apiService?.get('/notifications/preferences');
+      final response = await _apiService?.get('/users/notifications/preferences');
       if (response?.data['success'] == true) {
         return response?.data['data'];
       }

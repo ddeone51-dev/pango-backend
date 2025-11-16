@@ -116,7 +116,9 @@ class ProfileScreen extends StatelessWidget {
             context,
             icon: Icons.notifications_outlined,
             title: 'Notifications',
-            onTap: () {},
+            onTap: () {
+              Navigator.of(context).pushNamed(Routes.notificationSettings);
+            },
           ),
           _buildListTile(
             context,

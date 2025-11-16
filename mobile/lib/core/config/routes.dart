@@ -19,6 +19,7 @@ import '../../features/host/improved_add_listing_screen.dart';
 import '../../features/host/host_calendar_screen.dart';
 import '../../features/host/host_analytics_screen.dart';
 import '../../features/host/host_payout_settings_screen.dart';
+import '../../features/notifications/notification_settings_screen.dart';
 
 class Routes {
   static const String splash = '/';
@@ -41,6 +42,7 @@ class Routes {
   static const String hostCalendar = '/host-calendar';
   static const String hostAnalytics = '/host-analytics';
   static const String hostPayoutSettings = '/host-payout-settings';
+  static const String notificationSettings = '/notification-settings';
   
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -129,6 +131,9 @@ class Routes {
       
       case hostPayoutSettings:
         return MaterialPageRoute(builder: (_) => const HostPayoutSettingsScreen());
+      
+      case notificationSettings:
+        return MaterialPageRoute(builder: (_) => const NotificationSettingsScreen());
       
       default:
         return MaterialPageRoute(

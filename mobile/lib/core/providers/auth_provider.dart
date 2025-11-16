@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService authService;
@@ -97,6 +98,18 @@ class AuthProvider with ChangeNotifier {
       
       // Convert the user map to User object
       _user = User.fromJson(result['user']);
+      
+      // Register FCM token for push notifications after login
+      try {
+        final pushService = PushNotificationService();
+        final token = pushService.fcmToken;
+        if (token != null) {
+          print('🔔 FCM token available for registration after login');
+        }
+      } catch (e) {
+        print('⚠️ Failed to access FCM token: $e');
+      }
+      
       _isLoading = false;
       notifyListeners();
       

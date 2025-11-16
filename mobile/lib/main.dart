@@ -46,14 +46,8 @@ void main() async {
   // Initialize services
   await StorageService.init();
   
-  // Initialize Push Notifications
-  try {
-    final pushService = PushNotificationService();
-    // Note: API service will be provided after app initialization
-    print('✅ Push Notification Service ready');
-  } catch (e) {
-    print('⚠️ Push notifications not configured: $e');
-  }
+  // Push notifications will be initialized after app starts with API service
+  print('✅ Push Notification Service will be initialized after app start');
   
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
