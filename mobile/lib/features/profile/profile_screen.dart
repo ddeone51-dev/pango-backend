@@ -173,7 +173,9 @@ class ProfileScreen extends StatelessWidget {
             context,
             icon: Icons.help_outline,
             title: 'Help Center',
-            onTap: () {},
+            onTap: () {
+              Navigator.of(context).pushNamed(Routes.helpCenter);
+            },
           ),
           _buildListTile(
             context,
