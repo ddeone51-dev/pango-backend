@@ -76,8 +76,9 @@ router.put('/payout-settings', async (req, res, next) => {
       return next(new AppError('Only hosts can update payout settings', 403));
     }
 
-    // Allow hosts to save payout settings regardless of approval status
-    // Admin can view and verify payout information later
+    if (req.user.hostStatus !== 'approved') {
+      return next(new AppError('Host must be approved before adding payout details', 403));
+    }
 
     const { method, bankAccount, mobileMoney, preferredCurrency = 'TZS' } = req.body;
 
