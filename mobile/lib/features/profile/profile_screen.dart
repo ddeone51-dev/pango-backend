@@ -181,7 +181,9 @@ class ProfileScreen extends StatelessWidget {
             context,
             icon: Icons.info_outline,
             title: 'About Homia',
-            onTap: () {},
+            onTap: () {
+              Navigator.of(context).pushNamed(Routes.aboutHomia);
+            },
           ),
 
           const SizedBox(height: 20),

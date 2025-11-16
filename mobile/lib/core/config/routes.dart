@@ -21,6 +21,7 @@ import '../../features/host/host_analytics_screen.dart';
 import '../../features/host/host_payout_settings_screen.dart';
 import '../../features/notifications/notification_settings_screen.dart';
 import '../../features/profile/privacy_security_screen.dart';
+import '../../features/profile/about_homia_screen.dart';
 import '../../features/support/help_center_screen.dart';
 
 class Routes {
@@ -47,6 +48,7 @@ class Routes {
   static const String notificationSettings = '/notification-settings';
   static const String privacySecurity = '/privacy-security';
   static const String helpCenter = '/help-center';
+  static const String aboutHomia = '/about-homia';
   
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -144,6 +146,9 @@ class Routes {
       
       case helpCenter:
         return MaterialPageRoute(builder: (_) => const HelpCenterScreen());
+      
+      case aboutHomia:
+        return MaterialPageRoute(builder: (_) => const AboutHomiaScreen());
       
       default:
         return MaterialPageRoute(

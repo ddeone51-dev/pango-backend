@@ -44,6 +44,15 @@ class AuthProvider with ChangeNotifier {
     }
   }
   
+  Future<void> refreshUser() async {
+    try {
+      _user = await authService.getCurrentUser();
+      notifyListeners();
+    } catch (e) {
+      print('Error refreshing user: $e');
+    }
+  }
+  
   Future<bool> register({
     required String email,
     required String phoneNumber,

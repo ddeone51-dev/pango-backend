@@ -68,20 +68,35 @@ class Profile {
   final String lastName;
   final String? profilePicture;
   final String? bio;
+  final DateTime? dateOfBirth;
+  final String? gender;
+  final String? nationality;
+  final String? whatsappNumber;
+  final String? alternateEmail;
   
   Profile({
     required this.firstName,
     required this.lastName,
     this.profilePicture,
     this.bio,
+    this.dateOfBirth,
+    this.gender,
+    this.nationality,
+    this.whatsappNumber,
+    this.alternateEmail,
   });
   
   factory Profile.fromJson(Map<String, dynamic> json) {
     return Profile(
-      firstName: json['firstName'],
-      lastName: json['lastName'],
+      firstName: json['firstName'] ?? '',
+      lastName: json['lastName'] ?? '',
       profilePicture: json['profilePicture'],
       bio: json['bio'],
+      dateOfBirth: json['dateOfBirth'] != null ? DateTime.parse(json['dateOfBirth']) : null,
+      gender: json['gender'],
+      nationality: json['nationality'],
+      whatsappNumber: json['whatsappNumber'] ?? json['contactInfo']?['whatsappNumber'],
+      alternateEmail: json['alternateEmail'] ?? json['contactInfo']?['alternateEmail'],
     );
   }
   
@@ -91,6 +106,9 @@ class Profile {
       'lastName': lastName,
       'profilePicture': profilePicture,
       'bio': bio,
+      'dateOfBirth': dateOfBirth?.toIso8601String(),
+      'gender': gender,
+      'nationality': nationality,
     };
   }
 }
