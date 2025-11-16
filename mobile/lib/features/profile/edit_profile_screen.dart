@@ -160,8 +160,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         updateData['gender'] = _genderController.text;
       }
 
-      if (_profilePictureUrl != null) {
-        updateData['profilePicture'] = _profilePictureUrl;
+      if (_profilePictureUrl != null && _profilePictureUrl!.isNotEmpty) {
+        updateData['profilePicture'] = _profilePictureUrl!;
       }
 
       final response = await apiService.put('/users/profile', data: updateData);
