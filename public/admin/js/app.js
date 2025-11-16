@@ -781,9 +781,164 @@ function updatePayoutStats(hosts) {
     document.getElementById('verifiedCount').textContent = verifiedCount;
 }
 
-function viewPayoutDetails(hostId) {
-    alert(`View details for host: ${hostId}\n\nFull payout information would display here.`);
+async function viewPayoutDetails(hostId) {
+    const modal = document.getElementById('payoutDetailsModal');
+    const content = document.getElementById('payoutDetailsContent');
+    
+    if (!modal || !content) {
+        showToast('Modal elements not found', 'error');
+        return;
+    }
+    
+    // Show modal with loading state
+    modal.style.display = 'flex';
+    content.innerHTML = '<div class="loading-spinner">Loading payout details...</div>';
+    
+    try {
+        // Fetch user details including full payout information
+        const response = await apiCall(`/admin/users/${hostId}`);
+        const user = response.data?.user;
+        
+        if (!user) {
+            content.innerHTML = '<p class="error-message">User not found</p>';
+            return;
+        }
+        
+        // Payout settings can be on user object or separate in response.data
+        const payout = user.payoutSettings || response.data?.payoutSettings || {};
+        const profile = user.profile || {};
+        
+        // Build the details HTML
+        let detailsHTML = `
+            <div class="payout-details">
+                <div class="detail-section">
+                    <h3>Host Information</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Name:</label>
+                            <span>${profile.firstName || ''} ${profile.lastName || ''}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Email:</label>
+                            <span>${user.email || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Phone:</label>
+                            <span>${user.phoneNumber || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Host Status:</label>
+                            <span class="badge ${getHostStatusBadge(user.hostStatus)}">${(user.hostStatus || 'N/A').toUpperCase()}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="detail-section">
+                    <h3>Payout Settings</h3>
+        `;
+        
+        if (payout.method === 'bank_account' && payout.bankAccount) {
+            detailsHTML += `
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Method:</label>
+                            <span>🏦 Bank Account</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Account Name:</label>
+                            <span>${payout.bankAccount.accountName || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Account Number:</label>
+                            <span><code>${payout.bankAccount.accountNumber || 'N/A'}</code></span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Bank Name:</label>
+                            <span>${payout.bankAccount.bankName || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Branch Name:</label>
+                            <span>${payout.bankAccount.branchName || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>SWIFT Code:</label>
+                            <span>${payout.bankAccount.swiftCode || 'N/A'}</span>
+                        </div>
+                    </div>
+            `;
+        } else if (payout.method === 'mobile_money' && payout.mobileMoney) {
+            detailsHTML += `
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Method:</label>
+                            <span>📱 Mobile Money</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Provider:</label>
+                            <span>${(payout.mobileMoney.provider || 'N/A').toUpperCase()}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Phone Number:</label>
+                            <span><code>${payout.mobileMoney.phoneNumber || 'N/A'}</code></span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Account Name:</label>
+                            <span>${payout.mobileMoney.accountName || 'N/A'}</span>
+                        </div>
+                    </div>
+            `;
+        } else {
+            detailsHTML += '<p>No payout information available</p>';
+        }
+        
+        detailsHTML += `
+                    <div class="detail-grid" style="margin-top: 16px;">
+                        <div class="detail-item">
+                            <label>Setup Complete:</label>
+                            <span class="badge ${payout.isSetupComplete ? 'badge-success' : 'badge-danger'}">
+                                ${payout.isSetupComplete ? '✓ Yes' : '✗ No'}
+                            </span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Verified:</label>
+                            <span class="badge ${payout.verified ? 'badge-success' : 'badge-danger'}">
+                                ${payout.verified ? '✓ Yes' : '✗ No'}
+                            </span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Last Updated:</label>
+                            <span>${payout.lastUpdatedAt ? formatDate(payout.lastUpdatedAt) : 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Preferred Currency:</label>
+                            <span>${payout.preferredCurrency || 'TZS'}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        content.innerHTML = detailsHTML;
+    } catch (error) {
+        console.error('Error loading payout details:', error);
+        content.innerHTML = `<p class="error-message">Error loading payout details: ${error.message || 'Unknown error'}</p>`;
+    }
 }
+
+function closePayoutModal() {
+    const modal = document.getElementById('payoutDetailsModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('payoutDetailsModal');
+    if (modal && e.target === modal) {
+        closePayoutModal();
+    }
+});
 
 // Setup event listeners for payout settings
 document.getElementById('payoutSearch')?.addEventListener('input', () => loadPayoutSettings(1));
