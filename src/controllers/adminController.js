@@ -1314,14 +1314,12 @@ exports.getHostPayoutSettings = async (req, res, next) => {
     // Show all hosts regardless of approval status, but only those with payout settings
     const query = { 
       role: 'host',
-      'payoutSettings.isSetupComplete': true
+      'payoutSettings.method': { $exists: true, $ne: null, $in: ['bank_account', 'mobile_money'] }
     };
     
-    // Ensure payout method exists and optionally filter by specific method
+    // Filter by payout method if specified
     if (method) {
       query['payoutSettings.method'] = method;
-    } else {
-      query['payoutSettings.method'] = { $exists: true, $ne: null };
     }
     
     if (search) {
