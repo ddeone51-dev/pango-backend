@@ -734,6 +734,134 @@ router.get('/security-activity', async (req, res, next) => {
 // END PRIVACY & SECURITY ROUTES
 // ============================================
 
+// ============================================
+// SUPPORT ROUTES
+// ============================================
+
+// @desc    Contact support
+// @route   POST /api/v1/users/support/contact
+// @access  Private
+router.post('/support/contact', async (req, res, next) => {
+  try {
+    const { subject, message, topic } = req.body;
+
+    if (!subject || !message) {
+      return next(new AppError('Subject and message are required', 400));
+    }
+
+    // Map topic to category
+    const topicToCategory = {
+      general: 'other',
+      booking: 'booking',
+      payment: 'payment',
+      hosting: 'listing',
+      technical: 'technical',
+    };
+
+    const category = topicToCategory[topic] || 'other';
+
+    // Create support ticket
+    const SupportTicket = require('../models/SupportTicket');
+    const ticket = await SupportTicket.create({
+      user: req.user.id,
+      category,
+      subject: subject.trim(),
+      description: message.trim(),
+      priority: 'medium',
+      status: 'open',
+      messages: [{
+        sender: req.user.id,
+        message: message.trim(),
+        isStaffReply: false,
+      }],
+    });
+
+    // Send notification to admins (optional)
+    // You can add notification logic here
+
+    const logger = require('../utils/logger');
+    logger.info(`Support ticket created: ${ticket.ticketNumber} by user: ${req.user.email}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Your support request has been submitted successfully',
+      data: {
+        ticketNumber: ticket.ticketNumber,
+        ticketId: ticket._id,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @desc    Get user's support tickets
+// @route   GET /api/v1/users/support/tickets
+// @access  Private
+router.get('/support/tickets', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, status } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const query = { user: req.user.id };
+    if (status) {
+      query.status = status;
+    }
+
+    const SupportTicket = require('../models/SupportTicket');
+    const tickets = await SupportTicket.find(query)
+      .sort('-createdAt')
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select('ticketNumber subject category status priority createdAt updatedAt');
+
+    const total = await SupportTicket.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        tickets,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit)),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @desc    Get single support ticket
+// @route   GET /api/v1/users/support/tickets/:id
+// @access  Private
+router.get('/support/tickets/:id', async (req, res, next) => {
+  try {
+    const SupportTicket = require('../models/SupportTicket');
+    const ticket = await SupportTicket.findOne({
+      _id: req.params.id,
+      user: req.user.id,
+    }).populate('messages.sender', 'profile.firstName profile.lastName email');
+
+    if (!ticket) {
+      return next(new AppError('Support ticket not found', 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: ticket,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// END SUPPORT ROUTES
+// ============================================
+
 // @desc    Get saved listings
 // @route   GET /api/v1/users/saved-listings
 // @access  Private
