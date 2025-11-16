@@ -185,9 +185,9 @@ class _HostPayoutSettingsScreenState extends State<HostPayoutSettingsScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: (payoutProvider.isSaving || (payoutProvider.settings != null && !payoutProvider.settings!.canUpdate))
-                        ? null
-                        : () => _handleSave(payoutProvider),
+                    onPressed: _canSave(payoutProvider)
+                        ? () => _handleSave(payoutProvider)
+                        : null,
                     icon: payoutProvider.isSaving
                         ? const SizedBox(
                             width: 16,
@@ -320,6 +320,23 @@ class _HostPayoutSettingsScreenState extends State<HostPayoutSettingsScreen> {
         ),
       ],
     );
+  }
+
+  bool _canSave(HostPayoutProvider provider) {
+    // Disable if currently saving
+    if (provider.isSaving) return false;
+    
+    // Allow saving if settings are null (first time setup)
+    if (provider.settings == null) return true;
+    
+    // Allow saving if method is null or empty (first time setup)
+    if (provider.settings!.method == null || provider.settings!.method!.isEmpty) {
+      return true;
+    }
+    
+    // If settings exist and method exists, check canUpdate flag
+    // Only disable if canUpdate is explicitly false (cooldown active)
+    return provider.settings!.canUpdate;
   }
 
   Future<void> _handleSave(HostPayoutProvider provider) async {
