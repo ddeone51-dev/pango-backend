@@ -127,6 +127,9 @@ class PayoutSettings {
   final bool isSetupComplete;
   final bool verified;
   final DateTime? lastUpdatedAt;
+  final bool canUpdate;
+  final double daysUntilNextUpdate;
+  final DateTime? nextUpdateDate;
 
   PayoutSettings({
     required this.method,
@@ -136,6 +139,9 @@ class PayoutSettings {
     this.isSetupComplete = false,
     this.verified = false,
     this.lastUpdatedAt,
+    this.canUpdate = true,
+    this.daysUntilNextUpdate = 0,
+    this.nextUpdateDate,
   });
 
   factory PayoutSettings.fromJson(Map<String, dynamic> json) {
@@ -147,6 +153,9 @@ class PayoutSettings {
       isSetupComplete: json['isSetupComplete'] ?? false,
       verified: json['verified'] ?? false,
       lastUpdatedAt: json['lastUpdatedAt'] != null ? DateTime.parse(json['lastUpdatedAt']) : null,
+      canUpdate: json['canUpdate'] ?? true,
+      daysUntilNextUpdate: (json['daysUntilNextUpdate'] ?? 0).toDouble(),
+      nextUpdateDate: json['nextUpdateDate'] != null ? DateTime.parse(json['nextUpdateDate']) : null,
     );
   }
 

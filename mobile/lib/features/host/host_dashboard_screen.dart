@@ -56,6 +56,9 @@ class _HostDashboardScreenState extends State<HostDashboardScreen> {
               if (!hasPayoutSettings) ...[
                 _buildPayoutAlert(context),
                 const SizedBox(height: 16),
+              ] else if (hasPayoutSettings) ...[
+                _buildPayoutUpdateCard(context, authProvider),
+                const SizedBox(height: 16),
               ],
               Row(
                 children: [
@@ -268,6 +271,94 @@ class _HostDashboardScreenState extends State<HostDashboardScreen> {
               child: TextButton(
                 onPressed: () => Navigator.of(context).pushNamed(Routes.hostPayoutSettings),
                 child: const Text('Add payout method'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPayoutUpdateCard(BuildContext context, AuthProvider authProvider) {
+    final payoutSettings = authProvider.user?.payoutSettings;
+    final canUpdate = payoutSettings?.canUpdate ?? true;
+    final daysUntilNextUpdate = payoutSettings?.daysUntilNextUpdate ?? 0;
+    final verified = payoutSettings?.verified ?? false;
+    final method = payoutSettings?.method;
+    
+    return Card(
+      color: verified ? Colors.green.shade50 : Colors.blue.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  verified ? Icons.check_circle : Icons.info_outline,
+                  color: verified ? Colors.green.shade700 : Colors.blue.shade700,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    verified ? 'Payout details verified' : 'Payout details pending verification',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: verified ? Colors.green.shade800 : Colors.blue.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              method == 'bank_account' 
+                ? 'Bank Account: ${payoutSettings?.bankAccount?.bankName ?? 'N/A'}'
+                : 'Mobile Money: ${payoutSettings?.mobileMoney?.provider?.toUpperCase() ?? 'N/A'}',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 14,
+              ),
+            ),
+            if (!canUpdate && daysUntilNextUpdate > 0) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.schedule, size: 16, color: Colors.orange.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'You can update payout details in ${daysUntilNextUpdate.toStringAsFixed(1)} day(s) for security reasons.',
+                        style: TextStyle(
+                          color: Colors.orange.shade800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: canUpdate
+                    ? () => Navigator.of(context).pushNamed(Routes.hostPayoutSettings)
+                    : null,
+                icon: const Icon(Icons.edit, size: 18),
+                label: const Text('Update payout details'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ),
           ],

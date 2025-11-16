@@ -141,10 +141,53 @@ class _HostPayoutSettingsScreenState extends State<HostPayoutSettingsScreen> {
                 const SizedBox(height: 20),
                 if (_method == 'bank_account') _buildBankForm() else _buildMobileForm(),
                 const SizedBox(height: 24),
+                // Show cooldown information if applicable
+                if (payoutProvider.settings != null && !payoutProvider.settings!.canUpdate) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.schedule, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Update Cooldown Period',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.orange.shade900,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'For security reasons, payout details can only be updated once every 2 days. You can update again in ${payoutProvider.settings!.daysUntilNextUpdate.toStringAsFixed(1)} day(s).',
+                                style: TextStyle(
+                                  color: Colors.orange.shade800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: payoutProvider.isSaving ? null : () => _handleSave(payoutProvider),
+                    onPressed: (payoutProvider.isSaving || (payoutProvider.settings != null && !payoutProvider.settings!.canUpdate))
+                        ? null
+                        : () => _handleSave(payoutProvider),
                     icon: payoutProvider.isSaving
                         ? const SizedBox(
                             width: 16,
