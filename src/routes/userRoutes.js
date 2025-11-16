@@ -128,9 +128,18 @@ router.put('/payout-settings', async (req, res, next) => {
       req.user.id,
       { payoutSettings },
       { new: true, runValidators: true },
-    ).select('payoutSettings');
+    ).select('payoutSettings email profile');
 
     req.user.payoutSettings = updatedUser.payoutSettings;
+
+    // Debug logging
+    const logger = require('../utils/logger');
+    logger.info(`Payout settings saved for user: ${updatedUser.email}`, {
+      method: payoutSettings.method,
+      isSetupComplete: payoutSettings.isSetupComplete,
+      hasBankAccount: !!payoutSettings.bankAccount,
+      hasMobileMoney: !!payoutSettings.mobileMoney,
+    });
 
     res.status(200).json({
       success: true,

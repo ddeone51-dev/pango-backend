@@ -1314,21 +1314,36 @@ exports.getHostPayoutSettings = async (req, res, next) => {
     // Show all hosts regardless of approval status, but only those with payout settings
     const query = { 
       role: 'host',
-      'payoutSettings.method': { $exists: true, $ne: null, $in: ['bank_account', 'mobile_money'] }
     };
     
-    // Filter by payout method if specified
+    // Filter by payout method if specified, otherwise show all with any method
     if (method) {
       query['payoutSettings.method'] = method;
+    } else {
+      query.$or = [
+        { 'payoutSettings.method': 'bank_account' },
+        { 'payoutSettings.method': 'mobile_money' }
+      ];
     }
     
     if (search) {
-      query.$or = [
+      const searchConditions = [
         { 'profile.firstName': new RegExp(search, 'i') },
         { 'profile.lastName': new RegExp(search, 'i') },
         { email: new RegExp(search, 'i') },
         { phoneNumber: new RegExp(search, 'i') },
       ];
+      
+      // If we already have $or for method, combine them with $and
+      if (query.$or) {
+        query.$and = [
+          { $or: query.$or },
+          { $or: searchConditions }
+        ];
+        delete query.$or;
+      } else {
+        query.$or = searchConditions;
+      }
     }
 
     // Filter by verification status if specified
@@ -1336,8 +1351,12 @@ exports.getHostPayoutSettings = async (req, res, next) => {
       query['payoutSettings.verified'] = verified === 'true';
     }
 
+    // Debug logging
+    logger.info('Admin payout settings query:', JSON.stringify(query));
+
     // Get total count
     const total = await User.countDocuments(query);
+    logger.info(`Found ${total} hosts with payout settings`);
     const pages = Math.ceil(total / limitNum) || 1;
     const startIndex = (pageNum - 1) * limitNum;
 
@@ -1347,6 +1366,8 @@ exports.getHostPayoutSettings = async (req, res, next) => {
       .sort('-createdAt')
       .skip(startIndex)
       .limit(limitNum);
+    
+    logger.info(`Returning ${hosts.length} hosts`);
 
     const data = hosts.map((host) => ({
       id: host._id,

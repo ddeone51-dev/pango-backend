@@ -700,8 +700,12 @@ async function loadPayoutSettings(page = 1) {
             ...(verified && { verified }),
         });
 
+        console.log('Loading payout settings with params:', queryParams.toString());
         const response = await apiCall(`/admin/hosts/payout-settings?${queryParams}`);
+        console.log('Payout settings response:', response);
+        
         const hosts = response.data?.hosts || [];
+        console.log(`Found ${hosts.length} hosts with payout settings`);
         
         displayPayoutSettings(hosts);
         updatePayoutStats(response.data?.hosts || []);
@@ -713,7 +717,7 @@ async function loadPayoutSettings(page = 1) {
         hideLoading();
     } catch (error) {
         hideLoading();
-        console.error(error);
+        console.error('Error loading payout settings:', error);
         showToast(error.message || 'Failed to load payout settings', 'error');
     }
 }
