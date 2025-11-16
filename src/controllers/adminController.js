@@ -685,6 +685,74 @@ exports.updateUser = async (req, res, next) => {
   }
 };
 
+// @desc    Verify user email
+// @route   PUT /api/v1/admin/users/:id/verify-email
+// @access  Admin
+exports.verifyUserEmail = async (req, res, next) => {
+  try {
+    const { verified } = req.body;
+
+    if (typeof verified !== 'boolean') {
+      return next(new AppError('Verified must be a boolean', 400));
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    user.isEmailVerified = verified;
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`Admin ${verified ? 'verified' : 'unverified'} email for user: ${user.email}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        isEmailVerified: user.isEmailVerified,
+        message: `Email ${verified ? 'verified' : 'unverified'} successfully`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify user phone
+// @route   PUT /api/v1/admin/users/:id/verify-phone
+// @access  Admin
+exports.verifyUserPhone = async (req, res, next) => {
+  try {
+    const { verified } = req.body;
+
+    if (typeof verified !== 'boolean') {
+      return next(new AppError('Verified must be a boolean', 400));
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    user.isPhoneVerified = verified;
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`Admin ${verified ? 'verified' : 'unverified'} phone for user: ${user.email}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        isPhoneVerified: user.isPhoneVerified,
+        message: `Phone ${verified ? 'verified' : 'unverified'} successfully`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Delete user
 // @route   DELETE /api/v1/admin/users/:id
 // @access  Admin

@@ -19,6 +19,8 @@ const {
   updateHostStatus,
   getHostPayoutSettings,
   updatePayoutVerification,
+  verifyUserEmail,
+  verifyUserPhone,
 } = require('../controllers/adminController');
 const { sendBroadcastNotification } = require('../controllers/pushNotificationController');
 const { protectAdmin } = require('../middleware/adminAuth');
@@ -36,6 +38,8 @@ router.get('/dashboard/charts', getChartData);
 router.get('/users', getAllUsers);
 router.get('/users/:id', getUser);
 router.put('/users/:id', updateUser);
+router.put('/users/:id/verify-email', verifyUserEmail);
+router.put('/users/:id/verify-phone', verifyUserPhone);
 router.delete('/users/:id', deleteUser);
 
 // Listing management routes

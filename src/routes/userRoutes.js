@@ -13,35 +13,53 @@ router.use(protect);
 // @access  Private
 router.put('/profile', async (req, res, next) => {
   try {
-    const fieldsToUpdate = {
-      'profile.firstName': req.body.firstName,
-      'profile.lastName': req.body.lastName,
-      'profile.bio': req.body.bio,
-      'profile.dateOfBirth': req.body.dateOfBirth,
-      'profile.gender': req.body.gender,
-      'profile.nationality': req.body.nationality,
-      'profile.languages': req.body.languages,
-      'contactInfo.whatsappNumber': req.body.whatsappNumber,
-      'contactInfo.alternateEmail': req.body.alternateEmail,
-    };
+    const fieldsToUpdate = {};
 
-    // Remove undefined fields
-    Object.keys(fieldsToUpdate).forEach(key => 
-      fieldsToUpdate[key] === undefined && delete fieldsToUpdate[key]
-    );
+    if (req.body.firstName !== undefined) {
+      fieldsToUpdate['profile.firstName'] = req.body.firstName.trim();
+    }
+    if (req.body.lastName !== undefined) {
+      fieldsToUpdate['profile.lastName'] = req.body.lastName.trim();
+    }
+    if (req.body.bio !== undefined) {
+      fieldsToUpdate['profile.bio'] = req.body.bio.trim() || null;
+    }
+    if (req.body.dateOfBirth !== undefined) {
+      fieldsToUpdate['profile.dateOfBirth'] = req.body.dateOfBirth || null;
+    }
+    if (req.body.gender !== undefined) {
+      fieldsToUpdate['profile.gender'] = req.body.gender || null;
+    }
+    if (req.body.nationality !== undefined) {
+      fieldsToUpdate['profile.nationality'] = req.body.nationality.trim() || null;
+    }
+    if (req.body.profilePicture !== undefined) {
+      fieldsToUpdate['profile.profilePicture'] = req.body.profilePicture || null;
+    }
+    if (req.body.whatsappNumber !== undefined) {
+      fieldsToUpdate['contactInfo.whatsappNumber'] = req.body.whatsappNumber.trim() || null;
+    }
+    if (req.body.alternateEmail !== undefined) {
+      fieldsToUpdate['contactInfo.alternateEmail'] = req.body.alternateEmail.trim() || null;
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      fieldsToUpdate,
+      { $set: fieldsToUpdate },
       {
         new: true,
         runValidators: true,
       }
-    );
+    ).select('-password');
+
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
 
     res.status(200).json({
       success: true,
       data: user,
+      message: 'Profile updated successfully',
     });
   } catch (error) {
     next(error);
